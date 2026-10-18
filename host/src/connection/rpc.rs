@@ -1,8 +1,9 @@
 use super::{MAX_MESSAGE, TIMEOUT, result};
-use anyhow::{Context, Result, anyhow, bail};
-use reqwest::{blocking::Client, redirect::Policy};
+use anyhow::{Result, anyhow, bail};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
 use std::{fmt, io::Read};
+use ureq::{Agent, http::HeaderValue};
 use url::Url;
 
 pub struct RpcConfig {
@@ -26,21 +27,22 @@ impl RpcConfig {
 
 pub struct Rpc<'a> {
     config: &'a RpcConfig,
-    client: Client,
+    client: Agent,
     id: u64,
 }
 
 impl<'a> Rpc<'a> {
-    pub fn new(config: &'a RpcConfig) -> Result<Self> {
-        Ok(Self {
+    pub fn new(config: &'a RpcConfig) -> Self {
+        Self {
             config,
-            client: Client::builder()
-                .timeout(TIMEOUT)
-                .redirect(Policy::none())
+            client: Agent::config_builder()
+                .timeout_global(Some(TIMEOUT))
+                .max_redirects(0)
+                .http_status_as_error(false)
                 .build()
-                .context("RPC client setup failed")?,
+                .into(),
             id: 0,
-        })
+        }
     }
 
     pub fn call(&mut self, method: &str, params: &Value) -> Result<Value> {
@@ -50,14 +52,17 @@ impl<'a> Rpc<'a> {
         )?;
         let mut request = self
             .client
-            .post(self.config.url.clone())
-            .header("Content-Type", "application/json")
-            .body(body);
+            .post(self.config.url.as_str())
+            .header("Content-Type", "application/json");
         if let Some((user, password)) = &self.config.credentials {
-            request = request.basic_auth(user, Some(password));
+            let encoded = STANDARD.encode(format!("{user}:{password}"));
+            let mut authorization = HeaderValue::from_str(&format!("Basic {encoded}"))
+                .map_err(|_| anyhow!("RPC authentication header setup failed"))?;
+            authorization.set_sensitive(true);
+            request = request.header("Authorization", authorization);
         }
-        let response = request
-            .send()
+        let mut response = request
+            .send(body)
             .map_err(|_| anyhow!("RPC transport failed"))?;
         if !response.status().is_success() {
             bail!(
@@ -67,6 +72,8 @@ impl<'a> Rpc<'a> {
         }
         let mut bytes = Vec::new();
         response
+            .body_mut()
+            .as_reader()
             .take(MAX_MESSAGE + 1)
             .read_to_end(&mut bytes)
             .map_err(|_| anyhow!("RPC response read failed"))?;
@@ -83,6 +90,7 @@ impl<'a> Rpc<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use anyhow::Context;
     use std::{
         io::{BufRead, BufReader, Write},
         net::TcpListener,
@@ -154,7 +162,7 @@ mod tests {
             let credentials = auth.then(|| ("user".into(), "pass".into()));
             let config = RpcConfig::new(url, credentials);
             assert_eq!(
-                Rpc::new(&config)?.call("getbestblockhash", &json!([]))?,
+                Rpc::new(&config).call("getbestblockhash", &json!([]))?,
                 json!("tip")
             );
             task.join().map_err(|_| anyhow!("mock server panicked"))??;
@@ -187,9 +195,19 @@ mod tests {
         ] {
             let (url, task) = serve(status, body, false)?;
             let config = RpcConfig::new(url, None);
-            let response = Rpc::new(&config)?.call("getbestblockhash", &json!([]));
+            let response = Rpc::new(&config).call("getbestblockhash", &json!([]));
             assert!(response.is_err());
             assert!(!format!("{response:?}").contains("secret"));
+            if status != "200 OK" {
+                let error = response.err().context("expected HTTP status error")?;
+                assert_eq!(
+                    error.to_string(),
+                    format!(
+                        "RPC HTTP {}; check authentication and node availability",
+                        &status[..3]
+                    )
+                );
+            }
             task.join().map_err(|_| anyhow!("mock server panicked"))??;
         }
         Ok(())

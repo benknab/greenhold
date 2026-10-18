@@ -27,7 +27,7 @@ pub fn status(
             json!("1.4"),
         ],
     )?)?;
-    let mut client = rpc::Rpc::new(rpc)?;
+    let mut client = rpc::Rpc::new(rpc);
     let tip = client.call("getbestblockhash", &json!([]))?;
     let hash = tip
         .as_str()

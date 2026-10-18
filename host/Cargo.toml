@@ -10,12 +10,13 @@ workspace = true
 
 [dependencies]
 anyhow = "1"
+base64 = "0.22"
 bip324 = "0.11"
 bitcoin = "0.32"
 clap = { version = "4", features = ["derive"] }
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 serde_json = { version = "1", features = ["arbitrary_precision"] }
+ureq = { version = "3", default-features = false, features = ["rustls"] }
 url = "2"
 webpki-roots = "1"
 walledcity-core.workspace = true
