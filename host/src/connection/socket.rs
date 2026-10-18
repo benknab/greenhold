@@ -1,5 +1,6 @@
+use super::TIMEOUT;
 use anyhow::{Context, Result, bail};
-use std::str::FromStr;
+use std::{net::TcpStream, str::FromStr};
 use url::Url;
 
 /// A host and explicit nonzero port, without credentials or request-specific URL parts.
@@ -40,4 +41,19 @@ impl TryFrom<Url> for SocketUrl {
         }
         Ok(Self { url })
     }
+}
+
+pub(super) fn connect_tcp(endpoint: &SocketUrl) -> Result<TcpStream> {
+    let addresses = endpoint
+        .url()
+        .socket_addrs(|| None)
+        .context("node DNS lookup failed")?;
+    for address in addresses {
+        if let Ok(socket) = TcpStream::connect_timeout(&address, TIMEOUT) {
+            socket.set_read_timeout(Some(TIMEOUT))?;
+            socket.set_write_timeout(Some(TIMEOUT))?;
+            return Ok(socket);
+        }
+    }
+    bail!("node connection failed")
 }

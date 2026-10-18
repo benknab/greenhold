@@ -1,4 +1,7 @@
-use super::{MAX_MESSAGE, connect, endpoint::SocketUrl, result};
+use super::{
+    MAX_MESSAGE, result,
+    socket::{SocketUrl, connect_tcp},
+};
 use anyhow::{Context, Result, bail};
 use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned, pki_types::ServerName};
 use serde_json::{Value, json};
@@ -102,7 +105,7 @@ pub struct Electrum {
 impl Electrum {
     pub fn connect(endpoint: &ElectrumEndpoint) -> Result<Self> {
         let stream = match &endpoint.transport {
-            Transport::Tcp => Stream::Tcp(connect(endpoint.socket_url())?),
+            Transport::Tcp => Stream::Tcp(connect_tcp(endpoint.socket_url())?),
             Transport::Tls(name) => {
                 let config = ClientConfig::builder_with_provider(Arc::new(
                     rustls::crypto::ring::default_provider(),
@@ -113,7 +116,7 @@ impl Electrum {
                 })
                 .with_no_client_auth();
                 let mut connection = ClientConnection::new(Arc::new(config), name.clone())?;
-                let mut socket = connect(endpoint.socket_url())?;
+                let mut socket = connect_tcp(endpoint.socket_url())?;
                 // Finish certificate verification before returning a connected client.
                 while connection.is_handshaking() {
                     connection

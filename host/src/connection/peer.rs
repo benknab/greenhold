@@ -1,4 +1,7 @@
-use super::{MAX_MESSAGE, connect, endpoint::SocketUrl};
+use super::{
+    MAX_MESSAGE,
+    socket::{SocketUrl, connect_tcp},
+};
 use anyhow::{Context, Result, bail};
 use bitcoin::{
     consensus::{deserialize, serialize},
@@ -51,7 +54,7 @@ impl TryFrom<Url> for P2pEndpoint {
 }
 
 pub fn handshake(endpoint: &P2pEndpoint) -> Result<Value> {
-    exchange(&mut connect(endpoint.socket_url())?)
+    exchange(&mut connect_tcp(endpoint.socket_url())?)
 }
 
 fn exchange(stream: &mut (impl Read + Write)) -> Result<Value> {

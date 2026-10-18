@@ -1,12 +1,11 @@
 pub mod electrum;
-pub mod endpoint;
 pub mod peer;
 pub mod rpc;
+pub mod socket;
 
 use anyhow::{Context, Result, bail};
-use endpoint::SocketUrl;
 use serde_json::{Value, json};
-use std::{net::TcpStream, time::Duration};
+use std::time::Duration;
 
 const TIMEOUT: Duration = Duration::from_secs(20);
 const MAX_MESSAGE: u64 = 64 * 1024;
@@ -42,21 +41,6 @@ pub fn status(
         "utreexod_rpc": {"block_hash": hash, "roots": roots},
         "utreexod": peer,
     }))
-}
-
-fn connect(endpoint: &SocketUrl) -> Result<TcpStream> {
-    let addresses = endpoint
-        .url()
-        .socket_addrs(|| None)
-        .context("node DNS lookup failed")?;
-    for address in addresses {
-        if let Ok(socket) = TcpStream::connect_timeout(&address, TIMEOUT) {
-            socket.set_read_timeout(Some(TIMEOUT))?;
-            socket.set_write_timeout(Some(TIMEOUT))?;
-            return Ok(socket);
-        }
-    }
-    bail!("node connection failed")
 }
 
 fn result(reply: &Value, id: u64) -> Result<Value> {
