@@ -17,24 +17,17 @@ pub fn status(
     rpc: &utreexod_rpc::Config,
 ) -> Result<Value> {
     let mut electrum = electrum::Client::connect(electrum)?;
-    let [server_version, protocol_version]: [String; 2] = serde_json::from_value(electrum.call(
-        "server.version",
-        &[
-            json!(concat!(
-                env!("CARGO_PKG_NAME"),
-                "/",
-                env!("CARGO_PKG_VERSION")
-            )),
-            json!("1.4"),
-        ],
-    )?)?;
+    let version = electrum.server_version()?;
     let mut client = utreexod_rpc::Client::new(rpc);
     let hash = client.best_block_hash()?;
     // Bind the roots lookup to this response, not to a second tip lookup.
     let roots = client.utreexo_roots(&hash)?;
     let peer = peer::probe(peer, TIMEOUT)?;
     Ok(json!({
-        "electrum": {"server_version": server_version, "protocol_version": protocol_version},
+        "electrum": {
+            "server_version": version.server_version(),
+            "protocol_version": version.protocol_version()
+        },
         "utreexod_rpc": {
             "block_hash": hash.to_string(),
             "roots": {

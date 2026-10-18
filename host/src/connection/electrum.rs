@@ -13,6 +13,42 @@ use std::{
 };
 use url::{Host, Url};
 
+const PROTOCOL_VERSION: &str = "1.4";
+
+/// Server identity and the negotiated protocol version.
+#[derive(Debug)]
+pub struct Version {
+    server_version: String,
+    protocol_version: String,
+}
+
+impl Version {
+    pub fn server_version(&self) -> &str {
+        &self.server_version
+    }
+
+    pub fn protocol_version(&self) -> &str {
+        &self.protocol_version
+    }
+}
+
+impl TryFrom<Value> for Version {
+    type Error = anyhow::Error;
+
+    fn try_from(value: Value) -> Result<Self> {
+        let [server_version, protocol_version]: [String; 2] = serde_json::from_value(value)
+            .map_err(|_| anyhow::anyhow!("invalid Electrum server.version response"))?;
+        // A single version string in the request offers exactly that version.
+        if protocol_version != PROTOCOL_VERSION {
+            bail!("Electrum server selected an unsupported protocol version");
+        }
+        Ok(Self {
+            server_version,
+            protocol_version,
+        })
+    }
+}
+
 /// A validated address. Private fields keep the URL and transport consistent.
 #[derive(Clone, Debug)]
 pub struct Endpoint {
@@ -132,9 +168,25 @@ impl Client {
         })
     }
 
+    /// Identify this client and negotiate the supported Electrum protocol version.
+    pub fn server_version(&mut self) -> Result<Version> {
+        let reply = self.call(
+            "server.version",
+            &[
+                json!(concat!(
+                    env!("CARGO_PKG_NAME"),
+                    "/",
+                    env!("CARGO_PKG_VERSION")
+                )),
+                json!(PROTOCOL_VERSION),
+            ],
+        )?;
+        Version::try_from(reply).inspect_err(|_| self.stream = None)
+    }
+
     /// Send a request/response method and positional parameters. Subscriptions are unsupported.
     /// I/O or protocol errors close the connection; matched server errors do not.
-    pub fn call(&mut self, method: &str, params: &[Value]) -> Result<Value> {
+    fn call(&mut self, method: &str, params: &[Value]) -> Result<Value> {
         let id = self.next_id;
         let next_id = id.checked_add(1).context("Electrum request ID exhausted")?;
         let mut request = serde_json::to_vec(&json!({"id":id,"method":method,"params":params}))?;
@@ -221,7 +273,10 @@ mod tests {
                 (
                     1,
                     "server.version",
-                    json!(["test-client", "1.4"]),
+                    json!([
+                        concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION")),
+                        "1.4"
+                    ]),
                     json!({"result":["test-server", "1.4"]}),
                 ),
                 (
@@ -245,10 +300,9 @@ mod tests {
             Ok(())
         });
         let mut client = Client::connect(&endpoint)?;
-        assert_eq!(
-            client.call("server.version", &[json!("test-client"), json!("1.4")])?,
-            json!(["test-server", "1.4"])
-        );
+        let version = client.server_version()?;
+        assert_eq!(version.server_version(), "test-server");
+        assert_eq!(version.protocol_version(), "1.4");
         assert!(
             client
                 .call("unknown.method", &[json!("argument"), json!(7)])
@@ -257,6 +311,47 @@ mod tests {
         assert_eq!(client.call("server.ping", &[])?, Value::Null);
         task.join()
             .map_err(|_| anyhow::anyhow!("mock Electrum server panicked"))??;
+        Ok(())
+    }
+
+    #[test]
+    fn invalid_version_response_closes_connection() -> Result<()> {
+        for value in [
+            Value::Null,
+            json!("secret"),
+            json!({"server_version":"test-server","protocol_version":"1.4"}),
+            json!([]),
+            json!(["test-server"]),
+            json!(["test-server", "1.4", "extra"]),
+            json!([7, "1.4"]),
+            json!(["test-server", 1.4]),
+            json!(["test-server", null]),
+            json!(["test-server", "1.5"]),
+            json!(["test-server", "secret"]),
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0")?;
+            let endpoint = format!("tcp://{}", listener.local_addr()?).parse()?;
+            let task = thread::spawn(move || -> Result<()> {
+                let (socket, _) = listener.accept()?;
+                socket.set_read_timeout(Some(super::super::TIMEOUT))?;
+                let mut stream = BufReader::new(socket);
+                let mut request = String::new();
+                stream.read_line(&mut request)?;
+                writeln!(stream.get_mut(), "{}", json!({"id":1,"result":value}))?;
+                assert_eq!(stream.read_line(&mut String::new())?, 0);
+                Ok(())
+            });
+            let mut client = Client::connect(&endpoint)?;
+            let error = client
+                .server_version()
+                .err()
+                .context("expected invalid version")?;
+            assert!(!format!("{error:#}").contains("secret"));
+            assert!(client.stream.is_none());
+            assert!(client.server_version().is_err());
+            task.join()
+                .map_err(|_| anyhow::anyhow!("mock Electrum server panicked"))??;
+        }
         Ok(())
     }
 
