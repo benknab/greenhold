@@ -1,1 +1,28 @@
-fn main() {}
+mod cli;
+mod connection;
+
+use clap::Parser;
+use std::process::ExitCode;
+
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+
+fn main() -> ExitCode {
+    match run(cli::Cli::parse()) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("{error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run(cli: cli::Cli) -> Result<()> {
+    match cli.command {
+        cli::Command::Nodes(options) => {
+            let rpc = options.rpc_config()?;
+            let status = connection::status(&options.electrum, &options.utreexod, &rpc)?;
+            println!("{}", serde_json::to_string_pretty(&status)?);
+        }
+    }
+    Ok(())
+}

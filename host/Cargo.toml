@@ -9,6 +9,13 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+bitcoin = "0.32"
+clap = { version = "4", features = ["derive"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+serde_json = { version = "1", features = ["arbitrary_precision"] }
+url = "2"
+webpki-roots = "1"
 walledcity-core.workspace = true
 walledcity-guest-builder.workspace = true
 risc0-zkvm = { workspace = true, features = ["client", "disable-dev-mode"] }

@@ -15,10 +15,10 @@ git clone https://github.com/benknab/walledcity.git
 cd walledcity
 rzup install rust 1.97.0
 rzup default rust 1.97.0
-cargo run --locked --release
+cargo run --locked --release -- nodes
 ```
 
-This builds the host and guest. The host currently exits without output.
+This builds the host and guest, then checks live node access.
 `rzup default` selects the guest compiler for all projects on your machine.
 
 ## Development
@@ -27,4 +27,5 @@ This builds the host and guest. The host currently exits without output.
 cargo fmt --all --check
 cargo lint
 cargo test --locked --release --workspace --exclude walledcity-guest
+cargo build --locked --release
 ```
