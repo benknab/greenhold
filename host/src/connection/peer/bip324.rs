@@ -1,8 +1,5 @@
 use super::{
-    super::{
-        TIMEOUT,
-        socket::{SocketUrl, connect_tcp},
-    },
+    super::socket::{SocketUrl, connect_tcp},
     Transport,
     deadline::DeadlineStream,
 };
@@ -79,8 +76,9 @@ impl fmt::Debug for Bip324 {
 type Session = Protocol<DeadlineStream, DeadlineStream>;
 
 impl Bip324 {
-    pub(super) fn connect(endpoint: &SocketUrl) -> Result<Self> {
-        Self::new(connect_tcp(endpoint)?, TIMEOUT)
+    /// The exchange budget starts after TCP connection setup and includes BIP324 negotiation.
+    pub(super) fn connect(endpoint: &SocketUrl, timeout: Duration) -> Result<Self> {
+        Self::new(connect_tcp(endpoint)?, timeout)
     }
 
     fn new(socket: TcpStream, timeout: Duration) -> Result<Self> {
@@ -184,6 +182,7 @@ fn decode_message(contents: &[u8]) -> Result<NetworkMessage> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::super::TIMEOUT;
     use super::super::{P2pEndpoint, handshake, probe};
     use super::*;
     use std::{
@@ -260,7 +259,7 @@ mod tests {
     #[test]
     fn encrypted_handshake_and_reuse_cross_rekey_boundary() -> Result<()> {
         let (endpoint, task) = serve(reply_to_pings)?;
-        let mut transport = Bip324::connect(endpoint.socket_url())?;
+        let mut transport = Bip324::connect(endpoint.socket_url(), TIMEOUT)?;
         assert_eq!(handshake(&mut transport)?.start_height, 123);
         for nonce in 0..230 {
             transport.send(NetworkMessage::Ping(nonce))?;
@@ -278,7 +277,7 @@ mod tests {
             assert!(remote.read().is_err());
             Ok(())
         })?;
-        assert_eq!(probe(&endpoint)?.start_height, 123);
+        assert_eq!(probe(&endpoint, TIMEOUT)?.start_height, 123);
         task.join()
             .map_err(|_| anyhow::anyhow!("mock v2 peer panicked"))??;
         Ok(())
@@ -346,7 +345,7 @@ mod tests {
     fn rejects_tampered_truncated_and_invalid_packets() -> Result<()> {
         for case in 0..3 {
             let (endpoint, task) = serve(move |remote| send_bad_packet(remote, case))?;
-            let mut transport = Bip324::connect(endpoint.socket_url())?;
+            let mut transport = Bip324::connect(endpoint.socket_url(), TIMEOUT)?;
             assert!(transport.receive().is_err());
             assert!(transport.session.is_none());
             assert!(transport.send(NetworkMessage::Ping(42)).is_err());
@@ -371,7 +370,7 @@ mod tests {
             remote.write(&Payload::genuine(expected))?;
             Ok(())
         })?;
-        let mut transport = Bip324::connect(endpoint.socket_url())?;
+        let mut transport = Bip324::connect(endpoint.socket_url(), TIMEOUT)?;
         transport.send(message.clone())?;
         assert_eq!(transport.receive()?, message);
         task.join()
@@ -411,7 +410,7 @@ mod tests {
             listener.set_nonblocking(true)?;
             Ok(listener)
         });
-        assert!(probe(&endpoint).is_err());
+        assert!(probe(&endpoint, TIMEOUT).is_err());
         let listener = task
             .join()
             .map_err(|_| anyhow::anyhow!("mock v1 peer panicked"))??;

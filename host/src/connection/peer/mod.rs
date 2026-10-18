@@ -10,7 +10,7 @@ use bitcoin::p2p::{
 use std::{
     net::{Ipv4Addr, SocketAddr},
     str::FromStr,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use url::Url;
 
@@ -65,10 +65,15 @@ impl TryFrom<Url> for P2pEndpoint {
     }
 }
 
-pub fn probe(endpoint: &P2pEndpoint) -> Result<VersionMessage> {
+/// Apply one caller-selected budget to transport negotiation and the Bitcoin handshake.
+/// DNS and TCP connection setup happen before the budget starts.
+pub fn probe(endpoint: &P2pEndpoint, timeout: Duration) -> Result<VersionMessage> {
     match endpoint.transport {
-        TransportKind::Tcp => handshake(&mut tcp::Tcp::connect(endpoint.socket_url())?),
-        TransportKind::Bip324 => handshake(&mut bip324::Bip324::connect(endpoint.socket_url())?),
+        TransportKind::Tcp => handshake(&mut tcp::Tcp::connect(endpoint.socket_url(), timeout)?),
+        TransportKind::Bip324 => handshake(&mut bip324::Bip324::connect(
+            endpoint.socket_url(),
+            timeout,
+        )?),
     }
 }
 
@@ -150,7 +155,7 @@ mod tests {
             assert!(matches!(transport.receive()?, NetworkMessage::Ping(7)));
             transport.send(NetworkMessage::Pong(7))
         });
-        let mut transport = tcp::Tcp::connect(endpoint.socket_url())?;
+        let mut transport = tcp::Tcp::connect(endpoint.socket_url(), super::super::TIMEOUT)?;
         assert!(handshake(&mut transport)?.version >= MIN_PROTOCOL_VERSION);
         transport.send(NetworkMessage::Ping(7))?;
         assert!(matches!(transport.receive()?, NetworkMessage::Pong(7)));

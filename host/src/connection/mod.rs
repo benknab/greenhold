@@ -35,7 +35,7 @@ pub fn status(
     let _: bitcoin::BlockHash = hash.parse().context("RPC returned an invalid block hash")?;
     // Bind the roots lookup to this response, not to a second tip lookup.
     let roots = client.call("getutreexoroots", &json!([hash]))?;
-    let peer = peer::probe(peer)?;
+    let peer = peer::probe(peer, TIMEOUT)?;
     Ok(json!({
         "electrum": {"server_version": server_version, "protocol_version": protocol_version},
         "utreexod_rpc": {"block_hash": hash, "roots": roots},

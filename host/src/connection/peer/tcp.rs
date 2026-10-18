@@ -1,6 +1,6 @@
 use super::{
     super::{
-        MAX_MESSAGE, TIMEOUT,
+        MAX_MESSAGE,
         socket::{SocketUrl, connect_tcp},
     },
     Transport,
@@ -27,8 +27,9 @@ pub(super) struct Tcp {
 }
 
 impl Tcp {
-    pub(super) fn connect(endpoint: &SocketUrl) -> Result<Self> {
-        Ok(Self::new(connect_tcp(endpoint)?, TIMEOUT))
+    /// The exchange budget starts after TCP connection setup.
+    pub(super) fn connect(endpoint: &SocketUrl, timeout: Duration) -> Result<Self> {
+        Ok(Self::new(connect_tcp(endpoint)?, timeout))
     }
 
     pub(super) fn new(socket: TcpStream, timeout: Duration) -> Self {
@@ -84,6 +85,7 @@ fn read_message(stream: &mut impl Read) -> Result<NetworkMessage> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::super::TIMEOUT;
     use super::*;
     use std::{io, net::TcpListener};
 
