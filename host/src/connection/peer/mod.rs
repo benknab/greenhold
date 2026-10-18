@@ -26,7 +26,7 @@ trait Transport {
 }
 
 #[derive(Clone, Debug)]
-pub struct P2pEndpoint {
+pub struct Endpoint {
     url: SocketUrl,
     transport: TransportKind,
 }
@@ -37,13 +37,13 @@ enum TransportKind {
     Bip324,
 }
 
-impl P2pEndpoint {
+impl Endpoint {
     pub fn socket_url(&self) -> &SocketUrl {
         &self.url
     }
 }
 
-impl FromStr for P2pEndpoint {
+impl FromStr for Endpoint {
     type Err = anyhow::Error;
 
     fn from_str(text: &str) -> Result<Self> {
@@ -51,7 +51,7 @@ impl FromStr for P2pEndpoint {
     }
 }
 
-impl TryFrom<Url> for P2pEndpoint {
+impl TryFrom<Url> for Endpoint {
     type Error = anyhow::Error;
 
     fn try_from(url: Url) -> Result<Self> {
@@ -67,7 +67,7 @@ impl TryFrom<Url> for P2pEndpoint {
 
 /// Apply one caller-selected budget to transport negotiation and the Bitcoin handshake.
 /// DNS and TCP connection setup happen before the budget starts.
-pub fn probe(endpoint: &P2pEndpoint, timeout: Duration) -> Result<VersionMessage> {
+pub fn probe(endpoint: &Endpoint, timeout: Duration) -> Result<VersionMessage> {
     match endpoint.transport {
         TransportKind::Tcp => handshake(&mut tcp::Tcp::connect(endpoint.socket_url(), timeout)?),
         TransportKind::Bip324 => handshake(&mut bip324::Bip324::connect(
@@ -140,7 +140,7 @@ mod tests {
     #[test]
     fn handshake_leaves_transport_ready_for_an_operation() -> Result<()> {
         let listener = TcpListener::bind("127.0.0.1:0")?;
-        let endpoint: P2pEndpoint = format!("tcp://{}", listener.local_addr()?).parse()?;
+        let endpoint: Endpoint = format!("tcp://{}", listener.local_addr()?).parse()?;
         let task = thread::spawn(move || -> Result<()> {
             let (socket, _) = listener.accept()?;
             let mut transport = tcp::Tcp::new(socket, super::super::TIMEOUT);

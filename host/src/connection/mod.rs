@@ -11,11 +11,11 @@ const TIMEOUT: Duration = Duration::from_secs(20);
 const MAX_MESSAGE: u64 = 64 * 1024;
 
 pub fn status(
-    electrum: &electrum::ElectrumEndpoint,
-    peer: &peer::P2pEndpoint,
-    rpc: &utreexod_rpc::RpcConfig,
+    electrum: &electrum::Endpoint,
+    peer: &peer::Endpoint,
+    rpc: &utreexod_rpc::Config,
 ) -> Result<Value> {
-    let mut electrum = electrum::Electrum::connect(electrum)?;
+    let mut electrum = electrum::Client::connect(electrum)?;
     let [server_version, protocol_version]: [String; 2] = serde_json::from_value(electrum.call(
         "server.version",
         &[
@@ -27,7 +27,7 @@ pub fn status(
             json!("1.4"),
         ],
     )?)?;
-    let mut client = utreexod_rpc::Rpc::new(rpc);
+    let mut client = utreexod_rpc::Client::new(rpc);
     let tip = client.call("getbestblockhash", &json!([]))?;
     let hash = tip
         .as_str()

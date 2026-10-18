@@ -1,4 +1,4 @@
-use crate::connection::{electrum::ElectrumEndpoint, peer::P2pEndpoint, utreexod_rpc::RpcConfig};
+use crate::connection::{electrum, peer, utreexod_rpc};
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand};
 use url::Url;
@@ -33,7 +33,7 @@ pub struct ConnectionConfig {
         value_name = "ENDPOINT",
         default_value = DEFAULT_ELECTRUM
     )]
-    pub electrum: ElectrumEndpoint,
+    pub electrum: electrum::Endpoint,
 
     /// Utreexod mainnet P2P: tcp://HOST:PORT for v1, bip324://HOST:PORT for encrypted v2.
     #[arg(
@@ -41,7 +41,7 @@ pub struct ConnectionConfig {
         value_name = "ENDPOINT",
         default_value = DEFAULT_UTREEXOD
     )]
-    pub utreexod: P2pEndpoint,
+    pub utreexod: peer::Endpoint,
 
     /// Custom HTTP(S) RPC URL. Requires both Utreexod RPC auth flags.
     /// If omitted, use the anonymous public HTTPS guard on port 443.
@@ -59,9 +59,9 @@ pub struct ConnectionConfig {
 }
 
 impl ConnectionConfig {
-    pub fn rpc_config(&self) -> Result<RpcConfig> {
+    pub fn rpc_config(&self) -> Result<utreexod_rpc::Config> {
         match &self.utreexod_rpc {
-            None => Ok(RpcConfig::new(rpc_url(DEFAULT_RPC)?, None)),
+            None => Ok(utreexod_rpc::Config::new(rpc_url(DEFAULT_RPC)?, None)),
             Some(url) => {
                 let user = self
                     .utreexod_rpc_user
@@ -71,7 +71,7 @@ impl ConnectionConfig {
                     .utreexod_rpc_password
                     .as_ref()
                     .context("--utreexod-rpc requires --utreexod-rpc-password")?;
-                Ok(RpcConfig::new(
+                Ok(utreexod_rpc::Config::new(
                     url.clone(),
                     Some((user.clone(), password.value().to_owned())),
                 ))
@@ -305,8 +305,11 @@ mod tests {
             "tcp://host:123#fragment",
             "tcp:host:123",
         ] {
-            assert!(endpoint.parse::<ElectrumEndpoint>().is_err(), "{endpoint}");
-            assert!(endpoint.parse::<P2pEndpoint>().is_err(), "{endpoint}");
+            assert!(
+                endpoint.parse::<electrum::Endpoint>().is_err(),
+                "{endpoint}"
+            );
+            assert!(endpoint.parse::<peer::Endpoint>().is_err(), "{endpoint}");
         }
         for url in [
             "ftp://host/",

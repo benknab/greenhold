@@ -6,37 +6,37 @@ use std::{fmt, io::Read};
 use ureq::{Agent, http::HeaderValue};
 use url::Url;
 
-pub struct RpcConfig {
+pub struct Config {
     url: Url,
     credentials: Option<(String, String)>,
 }
 
-impl fmt::Debug for RpcConfig {
+impl fmt::Debug for Config {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RpcConfig")
+        f.debug_struct("Config")
             .field("authenticated", &self.credentials.is_some())
             .finish_non_exhaustive()
     }
 }
 
-impl RpcConfig {
+impl Config {
     pub fn new(url: Url, credentials: Option<(String, String)>) -> Self {
         Self { url, credentials }
     }
 }
 
 /// Utreexod's HTTP JSON-RPC client.
-pub struct Rpc<'a> {
-    config: &'a RpcConfig,
-    client: Agent,
+pub struct Client<'a> {
+    config: &'a Config,
+    agent: Agent,
     id: u64,
 }
 
-impl<'a> Rpc<'a> {
-    pub fn new(config: &'a RpcConfig) -> Self {
+impl<'a> Client<'a> {
+    pub fn new(config: &'a Config) -> Self {
         Self {
             config,
-            client: Agent::config_builder()
+            agent: Agent::config_builder()
                 .timeout_global(Some(TIMEOUT))
                 .max_redirects(0)
                 .http_status_as_error(false)
@@ -52,7 +52,7 @@ impl<'a> Rpc<'a> {
             &json!({"jsonrpc":"1.0", "id":self.id, "method":method, "params":params}),
         )?;
         let mut request = self
-            .client
+            .agent
             .post(self.config.url.as_str())
             .header("Content-Type", "application/json");
         if let Some((user, password)) = &self.config.credentials {
@@ -161,9 +161,9 @@ mod tests {
                 auth,
             )?;
             let credentials = auth.then(|| ("user".into(), "pass".into()));
-            let config = RpcConfig::new(url, credentials);
+            let config = Config::new(url, credentials);
             assert_eq!(
-                Rpc::new(&config).call("getbestblockhash", &json!([]))?,
+                Client::new(&config).call("getbestblockhash", &json!([]))?,
                 json!("tip")
             );
             task.join().map_err(|_| anyhow!("mock server panicked"))??;
@@ -173,7 +173,7 @@ mod tests {
 
     #[test]
     fn debug_redacts_credentials() -> Result<()> {
-        let config = RpcConfig::new(
+        let config = Config::new(
             Url::parse("http://localhost/")?,
             Some(("secret-user".into(), "secret-password".into())),
         );
@@ -195,8 +195,8 @@ mod tests {
             ("200 OK", " ".repeat(usize::try_from(MAX_MESSAGE)? + 1)),
         ] {
             let (url, task) = serve(status, body, false)?;
-            let config = RpcConfig::new(url, None);
-            let response = Rpc::new(&config).call("getbestblockhash", &json!([]));
+            let config = Config::new(url, None);
+            let response = Client::new(&config).call("getbestblockhash", &json!([]));
             assert!(response.is_err());
             assert!(!format!("{response:?}").contains("secret"));
             if status != "200 OK" {

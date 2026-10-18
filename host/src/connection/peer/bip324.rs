@@ -183,8 +183,9 @@ fn decode_message(contents: &[u8]) -> Result<NetworkMessage> {
 #[cfg(test)]
 mod tests {
     use super::super::super::TIMEOUT;
-    use super::super::{P2pEndpoint, handshake, probe};
+    use super::super::{handshake, probe};
     use super::*;
+    use crate::connection::peer;
     use std::{
         io::{self, Read, Write},
         net::{Shutdown, TcpListener},
@@ -195,7 +196,7 @@ mod tests {
 
     fn serve(
         action: impl FnOnce(Remote) -> Result<()> + Send + 'static,
-    ) -> Result<(P2pEndpoint, thread::JoinHandle<Result<()>>)> {
+    ) -> Result<(peer::Endpoint, thread::JoinHandle<Result<()>>)> {
         let listener = TcpListener::bind("127.0.0.1:0")?;
         let endpoint = format!("bip324://{}", listener.local_addr()?).parse()?;
         let task = thread::spawn(move || {

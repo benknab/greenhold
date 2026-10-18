@@ -15,7 +15,7 @@ use url::{Host, Url};
 
 /// A validated address. Private fields keep the URL and transport consistent.
 #[derive(Clone, Debug)]
-pub struct ElectrumEndpoint {
+pub struct Endpoint {
     url: SocketUrl,
     transport: Transport,
 }
@@ -26,13 +26,13 @@ enum Transport {
     Tls(ServerName<'static>),
 }
 
-impl ElectrumEndpoint {
+impl Endpoint {
     pub fn socket_url(&self) -> &SocketUrl {
         &self.url
     }
 }
 
-impl FromStr for ElectrumEndpoint {
+impl FromStr for Endpoint {
     type Err = anyhow::Error;
 
     fn from_str(text: &str) -> Result<Self> {
@@ -40,7 +40,7 @@ impl FromStr for ElectrumEndpoint {
     }
 }
 
-impl TryFrom<Url> for ElectrumEndpoint {
+impl TryFrom<Url> for Endpoint {
     type Error = anyhow::Error;
 
     fn try_from(url: Url) -> Result<Self> {
@@ -97,13 +97,13 @@ impl Write for Stream {
 
 /// A persistent connection with one request in flight at a time.
 #[derive(Debug)]
-pub struct Electrum {
+pub struct Client {
     stream: Option<BufReader<Stream>>,
     next_id: u64,
 }
 
-impl Electrum {
-    pub fn connect(endpoint: &ElectrumEndpoint) -> Result<Self> {
+impl Client {
+    pub fn connect(endpoint: &Endpoint) -> Result<Self> {
         let stream = match &endpoint.transport {
             Transport::Tcp => Stream::Tcp(connect_tcp(endpoint.socket_url())?),
             Transport::Tls(name) => {
@@ -188,28 +188,24 @@ mod tests {
 
     #[test]
     fn validated_transports_and_tls_names() -> Result<()> {
-        let tcp: ElectrumEndpoint = "tcp://localhost:50001".parse()?;
+        let tcp: Endpoint = "tcp://localhost:50001".parse()?;
         assert!(matches!(tcp.transport, Transport::Tcp));
         for scheme in ["tls", "ssl"] {
-            let endpoint: ElectrumEndpoint = format!("{scheme}://example.com:50002").parse()?;
+            let endpoint: Endpoint = format!("{scheme}://example.com:50002").parse()?;
             assert!(matches!(
                 endpoint.transport,
                 Transport::Tls(ServerName::DnsName(_))
             ));
             for host in ["127.0.0.1", "[::1]"] {
-                let endpoint: ElectrumEndpoint = format!("{scheme}://{host}:50002").parse()?;
+                let endpoint: Endpoint = format!("{scheme}://{host}:50002").parse()?;
                 assert!(matches!(
                     endpoint.transport,
                     Transport::Tls(ServerName::IpAddress(_))
                 ));
             }
         }
-        assert!(
-            "tls://bad%20host:50002"
-                .parse::<ElectrumEndpoint>()
-                .is_err()
-        );
-        assert!(ElectrumEndpoint::try_from(Url::parse("https://localhost:50002")?).is_err());
+        assert!("tls://bad%20host:50002".parse::<Endpoint>().is_err());
+        assert!(Endpoint::try_from(Url::parse("https://localhost:50002")?).is_err());
         Ok(())
     }
 
@@ -248,7 +244,7 @@ mod tests {
             }
             Ok(())
         });
-        let mut client = Electrum::connect(&endpoint)?;
+        let mut client = Client::connect(&endpoint)?;
         assert_eq!(
             client.call("server.version", &[json!("test-client"), json!("1.4")])?,
             json!(["test-server", "1.4"])
@@ -280,7 +276,7 @@ mod tests {
             assert_eq!(stream.read_line(&mut String::new())?, 0);
             Ok(())
         });
-        let mut client = Electrum::connect(&endpoint)?;
+        let mut client = Client::connect(&endpoint)?;
         assert!(client.call("server.ping", &[]).is_err());
         assert!(client.stream.is_none());
         assert_eq!(
