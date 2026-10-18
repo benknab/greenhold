@@ -4,6 +4,7 @@ use super::{
         socket::{SocketUrl, connect_tcp},
     },
     Transport,
+    deadline::DeadlineStream,
 };
 use anyhow::{Context, Result, bail};
 use bitcoin::{
@@ -14,33 +15,30 @@ use bitcoin::{
     },
 };
 use std::{
-    io::{self, Read, Write},
+    io::{Read, Write},
     net::TcpStream,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 /// Mainnet v1 framing. An I/O or framing failure discards the connection.
 #[derive(Debug)]
-pub(super) struct V1 {
+pub(super) struct Tcp {
     stream: Option<DeadlineStream>,
 }
 
-impl V1 {
+impl Tcp {
     pub(super) fn connect(endpoint: &SocketUrl) -> Result<Self> {
         Ok(Self::new(connect_tcp(endpoint)?, TIMEOUT))
     }
 
     pub(super) fn new(socket: TcpStream, timeout: Duration) -> Self {
         Self {
-            stream: Some(DeadlineStream {
-                socket,
-                deadline: Instant::now() + timeout,
-            }),
+            stream: Some(DeadlineStream::new(socket, timeout)),
         }
     }
 }
 
-impl Transport for V1 {
+impl Transport for Tcp {
     fn send(&mut self, message: NetworkMessage) -> Result<()> {
         let message = RawNetworkMessage::new(Magic::BITCOIN, message);
         let bytes = serialize(&message);
@@ -59,44 +57,6 @@ impl Transport for V1 {
         let message = read_message(&mut stream)?;
         self.stream = Some(stream);
         Ok(message)
-    }
-}
-
-/// One deadline for the entire exchange, including partial reads and writes.
-/// TCP connection setup and DNS resolution happen before this deadline starts.
-#[derive(Debug)]
-struct DeadlineStream {
-    socket: TcpStream,
-    deadline: Instant,
-}
-
-impl DeadlineStream {
-    fn remaining(&self) -> io::Result<Duration> {
-        self.deadline
-            .checked_duration_since(Instant::now())
-            .filter(|remaining| !remaining.is_zero())
-            .ok_or_else(|| {
-                io::Error::new(io::ErrorKind::TimedOut, "P2P operation deadline exceeded")
-            })
-    }
-}
-
-impl Read for DeadlineStream {
-    fn read(&mut self, bytes: &mut [u8]) -> io::Result<usize> {
-        self.socket.set_read_timeout(Some(self.remaining()?))?;
-        self.socket.read(bytes)
-    }
-}
-
-impl Write for DeadlineStream {
-    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        self.socket.set_write_timeout(Some(self.remaining()?))?;
-        self.socket.write(bytes)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        self.socket.set_write_timeout(Some(self.remaining()?))?;
-        self.socket.flush()
     }
 }
 
@@ -125,7 +85,7 @@ fn read_message(stream: &mut impl Read) -> Result<NetworkMessage> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::TcpListener;
+    use std::{io, net::TcpListener};
 
     #[test]
     fn reads_one_message_at_a_time() -> Result<()> {
@@ -180,7 +140,7 @@ mod tests {
             Magic::TESTNET3,
             NetworkMessage::Verack,
         )))?;
-        let mut transport = V1::new(client, TIMEOUT);
+        let mut transport = Tcp::new(client, TIMEOUT);
         assert!(transport.receive().is_err());
         assert!(transport.stream.is_none());
         assert!(transport.send(NetworkMessage::Ping(42)).is_err());
@@ -194,7 +154,7 @@ mod tests {
             Magic::BITCOIN,
             NetworkMessage::Verack,
         )))?;
-        let mut transport = V1::new(client, Duration::ZERO);
+        let mut transport = Tcp::new(client, Duration::ZERO);
         let error = transport
             .receive()
             .err()

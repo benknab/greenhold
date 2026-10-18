@@ -1,4 +1,6 @@
-mod v1;
+mod bip324;
+mod deadline;
+mod tcp;
 
 use super::socket::SocketUrl;
 use anyhow::{Context, Result, bail};
@@ -16,7 +18,7 @@ const MAX_HANDSHAKE_MESSAGES: usize = 100;
 // This client uses modern version messages and nonce-bearing ping/pong.
 const MIN_PROTOCOL_VERSION: u32 = 70001;
 
-/// Message boundary shared by plaintext v1 and future encrypted transports.
+/// Message boundary shared by plaintext v1 and encrypted v2 transports.
 /// Implementations own framing, size limits, deadlines, and failure cleanup.
 trait Transport {
     fn send(&mut self, message: NetworkMessage) -> Result<()>;
@@ -26,6 +28,13 @@ trait Transport {
 #[derive(Clone, Debug)]
 pub struct P2pEndpoint {
     url: SocketUrl,
+    transport: TransportKind,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TransportKind {
+    Tcp,
+    Bip324,
 }
 
 impl P2pEndpoint {
@@ -46,19 +55,21 @@ impl TryFrom<Url> for P2pEndpoint {
     type Error = anyhow::Error;
 
     fn try_from(url: Url) -> Result<Self> {
-        let endpoint = Self {
-            url: SocketUrl::try_from(url)?,
+        let url = SocketUrl::try_from(url)?;
+        let transport = match url.url().scheme() {
+            "tcp" => TransportKind::Tcp,
+            "bip324" => TransportKind::Bip324,
+            _ => bail!("P2P endpoint must use tcp:// or bip324://"),
         };
-        if endpoint.socket_url().url().scheme() != "tcp" {
-            bail!("P2P endpoint must use tcp://");
-        }
-        Ok(endpoint)
+        Ok(Self { url, transport })
     }
 }
 
 pub fn probe(endpoint: &P2pEndpoint) -> Result<VersionMessage> {
-    let mut transport = v1::V1::connect(endpoint.socket_url())?;
-    handshake(&mut transport)
+    match endpoint.transport {
+        TransportKind::Tcp => handshake(&mut tcp::Tcp::connect(endpoint.socket_url())?),
+        TransportKind::Bip324 => handshake(&mut bip324::Bip324::connect(endpoint.socket_url())?),
+    }
 }
 
 /// Leaves the transport open for the caller's operation after negotiation succeeds.
@@ -127,7 +138,7 @@ mod tests {
         let endpoint: P2pEndpoint = format!("tcp://{}", listener.local_addr()?).parse()?;
         let task = thread::spawn(move || -> Result<()> {
             let (socket, _) = listener.accept()?;
-            let mut transport = v1::V1::new(socket, super::super::TIMEOUT);
+            let mut transport = tcp::Tcp::new(socket, super::super::TIMEOUT);
             let NetworkMessage::Version(version) = transport.receive()? else {
                 bail!("expected version");
             };
@@ -139,7 +150,7 @@ mod tests {
             assert!(matches!(transport.receive()?, NetworkMessage::Ping(7)));
             transport.send(NetworkMessage::Pong(7))
         });
-        let mut transport = v1::V1::connect(endpoint.socket_url())?;
+        let mut transport = tcp::Tcp::connect(endpoint.socket_url())?;
         assert!(handshake(&mut transport)?.version >= MIN_PROTOCOL_VERSION);
         transport.send(NetworkMessage::Ping(7))?;
         assert!(matches!(transport.receive()?, NetworkMessage::Pong(7)));

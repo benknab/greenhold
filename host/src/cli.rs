@@ -35,7 +35,7 @@ pub struct ConnectionConfig {
     )]
     pub electrum: ElectrumEndpoint,
 
-    /// Utreexod mainnet Bitcoin v1 P2P endpoint: tcp://HOST:PORT.
+    /// Utreexod mainnet P2P: tcp://HOST:PORT for v1, bip324://HOST:PORT for encrypted v2.
     #[arg(
         long,
         value_name = "ENDPOINT",
@@ -262,7 +262,7 @@ mod tests {
     }
 
     #[test]
-    fn p2p_requires_explicit_tcp() -> Result<()> {
+    fn p2p_requires_explicit_transport() -> Result<()> {
         let Command::Nodes(nodes) =
             Cli::try_parse_from(["host", "nodes", "--utreexod", "tcp://[::1]:8335"])?.command;
         assert_eq!(
@@ -270,14 +270,20 @@ mod tests {
             Some(url::Host::Ipv6(std::net::Ipv6Addr::LOCALHOST))
         );
         assert_eq!(nodes.utreexod.socket_url().url().port(), Some(8335));
+        let Command::Nodes(nodes) =
+            Cli::try_parse_from(["host", "nodes", "--utreexod", "bip324://[::1]:8335"])?.command;
+        assert_eq!(nodes.utreexod.socket_url().url().scheme(), "bip324");
         for endpoint in [
             "localhost:8335",
             "[::1]:8335",
             "ssl://localhost:8335",
+            "tls://localhost:8335",
             "https://localhost:8335",
             "tcp://localhost:0",
             "tcp://localhost",
             "tcp://tcp://localhost:8335",
+            "bip324://localhost",
+            "bip324://localhost:0",
         ] {
             assert!(Cli::try_parse_from(["host", "nodes", "--utreexod", endpoint]).is_err());
         }
