@@ -4,7 +4,7 @@ use clap::{Args, Parser, Subcommand};
 use url::Url;
 
 pub const DEFAULT_ELECTRUM: &str = "tls://electrum.hospitablealpaca.com:50002";
-pub const DEFAULT_UTREEXOD: &str = "tcp://utreexo.hospitablealpaca.com:8335";
+pub const DEFAULT_UTREEXOD: &str = "bip324://utreexo.hospitablealpaca.com:8335";
 pub const DEFAULT_RPC: &str = "https://utreexo.hospitablealpaca.com/";
 
 #[derive(Debug, Parser)]

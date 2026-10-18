@@ -19,8 +19,8 @@ cargo run --locked --release -- nodes
 ```
 
 This builds the host and guest, then checks live node access.
-Use `--utreexod bip324://HOST:PORT` for encrypted Bitcoin P2P v2.
-The default `tcp://` endpoint uses v1. Explicit v2 connections fail rather than fall back to v1.
+The default Utreexod P2P connection uses encrypted Bitcoin P2P v2 (`bip324://`).
+Use `--utreexod tcp://HOST:PORT` for v1. V2 connections fail rather than fall back to v1.
 `rzup default` selects the guest compiler for all projects on your machine.
 
 ## Development
