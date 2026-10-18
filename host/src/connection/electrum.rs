@@ -1,10 +1,11 @@
 use super::{
-    MAX_MESSAGE, result,
+    MAX_MESSAGE,
+    json_rpc::{Request, Response, ServerError},
     socket::{SocketUrl, connect_tcp},
 };
 use anyhow::{Context, Result, bail};
 use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned, pki_types::ServerName};
-use serde_json::{Value, json};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::{
     io::{self, BufRead, BufReader, Read, Write},
     net::TcpStream,
@@ -16,7 +17,8 @@ use url::{Host, Url};
 const PROTOCOL_VERSION: &str = "1.4";
 
 /// Server identity and the negotiated protocol version.
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
+#[serde(try_from = "[String; 2]")]
 pub struct Version {
     server_version: String,
     protocol_version: String,
@@ -32,12 +34,10 @@ impl Version {
     }
 }
 
-impl TryFrom<Value> for Version {
+impl TryFrom<[String; 2]> for Version {
     type Error = anyhow::Error;
 
-    fn try_from(value: Value) -> Result<Self> {
-        let [server_version, protocol_version]: [String; 2] = serde_json::from_value(value)
-            .map_err(|_| anyhow::anyhow!("invalid Electrum server.version response"))?;
+    fn try_from([server_version, protocol_version]: [String; 2]) -> Result<Self> {
         // A single version string in the request offers exactly that version.
         if protocol_version != PROTOCOL_VERSION {
             bail!("Electrum server selected an unsupported protocol version");
@@ -170,26 +170,26 @@ impl Client {
 
     /// Identify this client and negotiate the supported Electrum protocol version.
     pub fn server_version(&mut self) -> Result<Version> {
-        let reply = self.call(
+        self.call(
             "server.version",
-            &[
-                json!(concat!(
-                    env!("CARGO_PKG_NAME"),
-                    "/",
-                    env!("CARGO_PKG_VERSION")
-                )),
-                json!(PROTOCOL_VERSION),
+            [
+                concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION")),
+                PROTOCOL_VERSION,
             ],
-        )?;
-        Version::try_from(reply).inspect_err(|_| self.stream = None)
+        )
     }
 
     /// Send a request/response method and positional parameters. Subscriptions are unsupported.
     /// I/O or protocol errors close the connection; matched server errors do not.
-    fn call(&mut self, method: &str, params: &[Value]) -> Result<Value> {
+    fn call<T: DeserializeOwned>(&mut self, method: &str, params: impl Serialize) -> Result<T> {
         let id = self.next_id;
         let next_id = id.checked_add(1).context("Electrum request ID exhausted")?;
-        let mut request = serde_json::to_vec(&json!({"id":id,"method":method,"params":params}))?;
+        let mut request = serde_json::to_vec(&Request {
+            jsonrpc: None,
+            id,
+            method,
+            params,
+        })?;
         request.push(b'\n');
         if request.len() as u64 > MAX_MESSAGE {
             bail!("Electrum request exceeds size limit");
@@ -204,13 +204,19 @@ impl Client {
             .write_all(&request)
             .context("Electrum write failed")?;
         stream.get_mut().flush().context("Electrum flush failed")?;
-        let reply = read_reply(&mut stream, id)?;
-        self.stream = Some(stream);
-        result(&reply, id)
+        let reply = read_reply(&mut stream)?;
+        if reply.id != id {
+            bail!("JSON-RPC response ID does not match request");
+        }
+        let result: Result<T> = reply.into_result();
+        if result.is_ok() || result.as_ref().is_err_and(anyhow::Error::is::<ServerError>) {
+            self.stream = Some(stream);
+        }
+        result
     }
 }
 
-fn read_reply(stream: &mut impl BufRead, id: u64) -> Result<Value> {
+fn read_reply(stream: &mut impl BufRead) -> Result<Response> {
     let mut bytes = Vec::new();
     stream
         .by_ref()
@@ -220,22 +226,13 @@ fn read_reply(stream: &mut impl BufRead, id: u64) -> Result<Value> {
     if bytes.len() as u64 > MAX_MESSAGE || bytes.last() != Some(&b'\n') {
         bail!("Electrum response is truncated or exceeds size limit");
     }
-    let reply: Value = serde_json::from_slice(&bytes).context("invalid Electrum JSON")?;
-    if reply.get("method").is_some() {
-        bail!("unexpected Electrum notification or server request");
-    }
-    if reply.get("id") != Some(&json!(id)) {
-        bail!("Electrum response ID does not match request");
-    }
-    if reply.get("result").is_none() && reply["error"].is_null() {
-        bail!("missing Electrum result or error");
-    }
-    Ok(reply)
+    Response::parse(&bytes)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::{Value, json};
     use std::{net::TcpListener, thread};
 
     #[test]
@@ -305,10 +302,13 @@ mod tests {
         assert_eq!(version.protocol_version(), "1.4");
         assert!(
             client
-                .call("unknown.method", &[json!("argument"), json!(7)])
+                .call::<Value>("unknown.method", [json!("argument"), json!(7)])
                 .is_err()
         );
-        assert_eq!(client.call("server.ping", &[])?, Value::Null);
+        assert_eq!(
+            client.call::<Value>("server.ping", [] as [(); 0])?,
+            Value::Null
+        );
         task.join()
             .map_err(|_| anyhow::anyhow!("mock Electrum server panicked"))??;
         Ok(())
@@ -372,11 +372,11 @@ mod tests {
             Ok(())
         });
         let mut client = Client::connect(&endpoint)?;
-        assert!(client.call("server.ping", &[]).is_err());
+        assert!(client.call::<Value>("server.ping", [] as [(); 0]).is_err());
         assert!(client.stream.is_none());
         assert_eq!(
             client
-                .call("server.ping", &[])
+                .call::<Value>("server.ping", [] as [(); 0])
                 .err()
                 .context("expected closed client")?
                 .to_string(),
@@ -388,13 +388,12 @@ mod tests {
     }
 
     #[test]
-    fn notifications_framing_and_ids() -> Result<()> {
+    fn notifications_and_framing() -> Result<()> {
         let mut input = &b"{\"id\":7,\"result\":null}\n{\"id\":8,\"result\":0}\n"[..];
-        assert_eq!(result(&read_reply(&mut input, 7)?, 7)?, Value::Null);
-        assert_eq!(result(&read_reply(&mut input, 8)?, 8)?, json!(0));
+        assert_eq!(read_reply(&mut input)?.into_result::<Value>()?, Value::Null);
+        assert_eq!(read_reply(&mut input)?.into_result::<Value>()?, json!(0));
         for input in [
-            b"{\"id\":2,\"result\":0}\n".as_slice(),
-            b"{\"id\":1,\"result\":0}",
+            b"{\"id\":1,\"result\":0}".as_slice(),
             b"{\"id\":1}\n",
             b"{\"method\":\"notice\",\"params\":[]}\n{\"id\":1,\"result\":0}\n",
             b"{\"id\":null,\"method\":\"notice\",\"params\":[]}\n",
@@ -402,10 +401,10 @@ mod tests {
             b"not JSON\n",
             b"",
         ] {
-            assert!(read_reply(&mut &*input, 1).is_err());
+            assert!(read_reply(&mut &*input).is_err());
         }
         let oversized = vec![b' '; usize::try_from(MAX_MESSAGE)? + 1];
-        assert!(read_reply(&mut oversized.as_slice(), 1).is_err());
+        assert!(read_reply(&mut oversized.as_slice()).is_err());
         Ok(())
     }
 }

@@ -1,9 +1,10 @@
 pub mod electrum;
+mod json_rpc;
 pub mod peer;
 pub mod socket;
 pub mod utreexod_rpc;
 
-use anyhow::{Context, Result, bail};
+use anyhow::Result;
 use bitcoin::hex::DisplayHex;
 use serde_json::{Value, json};
 use std::time::Duration;
@@ -37,11 +38,4 @@ pub fn status(
         },
         "utreexod": {"protocol_version": peer.version, "start_height": peer.start_height},
     }))
-}
-
-fn result(reply: &Value, id: u64) -> Result<Value> {
-    if reply.get("id") != Some(&json!(id)) || !reply["error"].is_null() {
-        bail!("node rejected request or returned a mismatched response ID");
-    }
-    reply.get("result").cloned().context("missing node result")
 }

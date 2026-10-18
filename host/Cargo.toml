@@ -12,10 +12,11 @@ workspace = true
 anyhow = "1"
 base64 = "0.22"
 bip324 = "0.11"
-bitcoin = "0.32"
+bitcoin = { version = "0.32", features = ["serde"] }
 clap = { version = "4", features = ["derive"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
-serde_json = { version = "1", features = ["arbitrary_precision"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["arbitrary_precision", "raw_value"] }
 ureq = { version = "3", default-features = false, features = ["rustls"] }
 url = "2"
 webpki-roots = "1"

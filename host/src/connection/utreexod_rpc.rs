@@ -1,8 +1,11 @@
-use super::{MAX_MESSAGE, TIMEOUT, result};
-use anyhow::{Context, Result, anyhow, bail};
+use super::{
+    MAX_MESSAGE, TIMEOUT,
+    json_rpc::{Request, Response},
+};
+use anyhow::{Result, anyhow, bail};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use bitcoin::{BlockHash, hex::FromHex};
-use serde_json::{Value, json};
+use serde::{Deserialize, Deserializer, Serialize, de::DeserializeOwned};
 use std::{fmt, io::Read};
 use ureq::{Agent, http::HeaderValue};
 use url::Url;
@@ -27,7 +30,8 @@ impl Config {
 }
 
 /// Parsed accumulator state reported by the node, not independently verified chain state.
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
+#[serde(try_from = "RootsResponse")]
 pub struct Roots {
     num_leaves: u64,
     roots: Vec<[u8; 32]>,
@@ -44,32 +48,36 @@ impl Roots {
     }
 }
 
-impl TryFrom<Value> for Roots {
+#[derive(Deserialize)]
+struct RootsResponse {
+    #[serde(rename = "numleaves")]
+    num_leaves: u64,
+    #[serde(deserialize_with = "deserialize_roots")]
+    roots: Vec<[u8; 32]>,
+}
+
+fn deserialize_roots<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<[u8; 32]>, D::Error> {
+    // Go encodes a nil slice as null for an empty accumulator.
+    let roots = Option::<Vec<String>>::deserialize(deserializer)?.unwrap_or_default();
+    roots
+        .iter()
+        .map(|text| {
+            <[u8; 32]>::from_hex(text).map_err(|_| serde::de::Error::custom("invalid root hash"))
+        })
+        .collect()
+}
+
+impl TryFrom<RootsResponse> for Roots {
     type Error = anyhow::Error;
 
-    fn try_from(value: Value) -> Result<Self> {
-        let object = value.as_object().context("invalid RPC roots object")?;
-        let num_leaves = object
-            .get("numleaves")
-            .and_then(Value::as_u64)
-            .context("invalid RPC leaf count")?;
-        let values = match object.get("roots") {
-            Some(Value::Array(values)) => values.as_slice(),
-            // Go encodes a nil slice as null for an empty accumulator.
-            Some(Value::Null) if num_leaves == 0 => &[],
-            _ => bail!("invalid RPC root list"),
-        };
+    fn try_from(response: RootsResponse) -> Result<Self> {
+        let RootsResponse { num_leaves, roots } = response;
         // The forest has one root for each set bit in the leaf count.
-        if values.len() != usize::try_from(num_leaves.count_ones())? {
+        if roots.len() != usize::try_from(num_leaves.count_ones())? {
             bail!("RPC root count does not match leaf count");
         }
-        let roots = values
-            .iter()
-            .map(|value| {
-                let text = value.as_str().context("invalid RPC root hash")?;
-                <[u8; 32]>::from_hex(text).map_err(|_| anyhow!("invalid RPC root hash"))
-            })
-            .collect::<Result<Vec<_>>>()?;
         Ok(Self { num_leaves, roots })
     }
 }
@@ -96,21 +104,22 @@ impl<'a> Client<'a> {
     }
 
     pub fn best_block_hash(&mut self) -> Result<BlockHash> {
-        let value = self.call("getbestblockhash", &json!([]))?;
-        let text = value.as_str().context("invalid RPC block hash")?;
-        text.parse().map_err(|_| anyhow!("invalid RPC block hash"))
+        self.call("getbestblockhash", [] as [(); 0])
     }
 
     /// Request accumulator state at this exact block, rather than a moving tip.
     pub fn utreexo_roots(&mut self, block: &BlockHash) -> Result<Roots> {
-        Roots::try_from(self.call("getutreexoroots", &json!([block.to_string()]))?)
+        self.call("getutreexoroots", [block])
     }
 
-    fn call(&mut self, method: &str, params: &Value) -> Result<Value> {
+    fn call<T: DeserializeOwned>(&mut self, method: &str, params: impl Serialize) -> Result<T> {
         self.id += 1;
-        let body = serde_json::to_vec(
-            &json!({"jsonrpc":"1.0", "id":self.id, "method":method, "params":params}),
-        )?;
+        let body = serde_json::to_vec(&Request {
+            jsonrpc: Some("1.0"),
+            id: self.id,
+            method,
+            params,
+        })?;
         let mut request = self
             .agent
             .post(self.config.url.as_str())
@@ -142,15 +151,19 @@ impl<'a> Client<'a> {
             bail!("RPC response exceeds size limit");
         }
         // Remote bodies and transport errors may contain secrets. Do not print them.
-        let reply: Value =
-            serde_json::from_slice(&bytes).map_err(|_| anyhow!("invalid RPC JSON"))?;
-        result(&reply, self.id)
+        let reply = Response::parse(&bytes)?;
+        if reply.id != self.id {
+            bail!("JSON-RPC response ID does not match request");
+        }
+        reply.into_result()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use anyhow::Context;
+    use serde_json::{Value, json};
     use std::{
         io::{BufRead, BufReader, Write},
         net::TcpListener,
@@ -256,7 +269,7 @@ mod tests {
         for (status, body) in [
             ("302 Found", "secret".into()),
             ("401 Unauthorized", "secret".into()),
-            ("200 OK", json!({"id":2,"result":"secret"}).to_string()),
+            ("200 OK", json!({"id":2,"result":BLOCK}).to_string()),
             (
                 "200 OK",
                 json!({"id":1,"error":{"message":"secret"}}).to_string(),
@@ -328,7 +341,7 @@ mod tests {
                 .best_block_hash()
                 .err()
                 .context("expected invalid block hash")?;
-            assert_eq!(format!("{error:#}"), "invalid RPC block hash");
+            assert_eq!(format!("{error:#}"), "invalid JSON-RPC result");
             task.join().map_err(|_| anyhow!("mock server panicked"))??;
         }
         Ok(())
@@ -379,12 +392,12 @@ mod tests {
     #[test]
     fn accepts_empty_and_large_leaf_counts() -> Result<()> {
         for roots in [json!([]), Value::Null] {
-            let state = Roots::try_from(json!({"numleaves":0,"roots":roots}))?;
+            let state: Roots = serde_json::from_value(json!({"numleaves":0,"roots":roots}))?;
             assert_eq!(state.num_leaves(), 0);
             assert!(state.roots().is_empty());
         }
         for num_leaves in [1_u64 << 63, u64::MAX] {
-            let state = Roots::try_from(json!({
+            let state: Roots = serde_json::from_value(json!({
                 "numleaves":num_leaves,
                 "roots":vec![BLOCK; usize::try_from(num_leaves.count_ones())?],
             }))?;
