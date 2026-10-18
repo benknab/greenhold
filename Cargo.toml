@@ -1,0 +1,39 @@
+[workspace]
+resolver = "2"
+members = ["core", "guest", "guest-builder", "host"]
+default-members = ["host"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+publish = false
+
+[workspace.dependencies]
+walledcity-core = { path = "core" }
+walledcity-guest-builder = { path = "guest-builder" }
+risc0-build = "=3.0.6"
+risc0-zkvm = { version = "=3.0.6", default-features = false }
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+unused_must_use = "deny"
+unfulfilled_lint_expectations = "deny"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
+undocumented_unsafe_blocks = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+let_underscore_must_use = "deny"
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+
+[profile.release]
+debug = 1

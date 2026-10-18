@@ -1,0 +1,7 @@
+# Shared by all four packages.
+excessive-nesting-threshold = 4
+
+# Tests may fail loudly; production code must handle errors or justify an exception.
+allow-expect-in-tests = true
+allow-unwrap-in-tests = true
+allow-panic-in-tests = true

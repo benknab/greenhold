@@ -1,0 +1,9 @@
+[resolver]
+incompatible-rust-versions = "fallback"
+
+[alias]
+lint = "clippy --locked --release --workspace --all-targets -- -D warnings"
+
+[env]
+# Apply --locked to the nested guest build as well as the outer host build.
+RISC0_BUILD_LOCKED = "1"

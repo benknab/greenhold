@@ -1,0 +1,14 @@
+[package]
+name = "walledcity-host"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+walledcity-core.workspace = true
+walledcity-guest-builder.workspace = true
+risc0-zkvm = { workspace = true, features = ["client", "disable-dev-mode"] }
