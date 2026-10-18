@@ -1,4 +1,4 @@
-use crate::connection::{electrum::ElectrumEndpoint, rpc::RpcConfig, validate_socket_url};
+use crate::connection::{electrum::ElectrumEndpoint, peer::P2pEndpoint, rpc::RpcConfig};
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand};
 use url::Url;
@@ -39,10 +39,9 @@ pub struct ConnectionConfig {
     #[arg(
         long,
         value_name = "ENDPOINT",
-        value_parser = p2p_endpoint,
         default_value = DEFAULT_UTREEXOD
     )]
-    pub utreexod: Url,
+    pub utreexod: P2pEndpoint,
 
     /// Custom HTTP(S) RPC URL. Requires both Utreexod RPC auth flags.
     /// If omitted, use the anonymous public HTTPS guard on port 443.
@@ -102,15 +101,6 @@ impl std::fmt::Debug for Redacted {
     }
 }
 
-fn p2p_endpoint(text: &str) -> Result<Url> {
-    let url = Url::parse(text).context("invalid endpoint URL")?;
-    validate_socket_url(&url)?;
-    if url.scheme() != "tcp" {
-        bail!("P2P endpoint must use tcp://");
-    }
-    Ok(url)
-}
-
 fn rpc_user(text: &str) -> Result<String> {
     if text.is_empty() || text.contains(':') {
         bail!("RPC username must be nonempty and must not contain ':'");
@@ -147,12 +137,12 @@ mod tests {
     fn defaults_and_overrides() -> Result<()> {
         let Command::Nodes(nodes) = Cli::try_parse_from(["host", "nodes"])?.command;
         assert_eq!(
-            nodes.electrum.url().host_str(),
+            nodes.electrum.socket_url().url().host_str(),
             Some("electrum.hospitablealpaca.com")
         );
-        assert_eq!(nodes.electrum.url().port(), Some(50002));
-        assert_eq!(nodes.electrum.url().scheme(), "tls");
-        assert_eq!(nodes.utreexod.port(), Some(8335));
+        assert_eq!(nodes.electrum.socket_url().url().port(), Some(50002));
+        assert_eq!(nodes.electrum.socket_url().url().scheme(), "tls");
+        assert_eq!(nodes.utreexod.socket_url().url().port(), Some(8335));
         assert!(nodes.utreexod_rpc.is_none());
         assert!(nodes.rpc_config().is_ok());
         let Command::Nodes(nodes) = Cli::try_parse_from([
@@ -171,10 +161,13 @@ mod tests {
         ])?
         .command;
         assert_eq!(
-            nodes.electrum.url().host(),
+            nodes.electrum.socket_url().url().host(),
             Some(url::Host::Ipv6(std::net::Ipv6Addr::LOCALHOST))
         );
-        assert_eq!(nodes.utreexod.host_str(), Some("localhost"));
+        assert_eq!(
+            nodes.utreexod.socket_url().url().host_str(),
+            Some("localhost")
+        );
         assert_eq!(
             nodes.utreexod_rpc.as_ref().map(Url::as_str),
             Some("http://localhost:8334/")
@@ -253,7 +246,7 @@ mod tests {
         ] {
             let Command::Nodes(config) =
                 Cli::try_parse_from(["host", "nodes", "--electrum", text])?.command;
-            assert_eq!(config.electrum.url().scheme(), scheme);
+            assert_eq!(config.electrum.socket_url().url().scheme(), scheme);
         }
         for text in [
             "localhost:50002",
@@ -273,10 +266,10 @@ mod tests {
         let Command::Nodes(nodes) =
             Cli::try_parse_from(["host", "nodes", "--utreexod", "tcp://[::1]:8335"])?.command;
         assert_eq!(
-            nodes.utreexod.host(),
+            nodes.utreexod.socket_url().url().host(),
             Some(url::Host::Ipv6(std::net::Ipv6Addr::LOCALHOST))
         );
-        assert_eq!(nodes.utreexod.port(), Some(8335));
+        assert_eq!(nodes.utreexod.socket_url().url().port(), Some(8335));
         for endpoint in [
             "localhost:8335",
             "[::1]:8335",
@@ -307,7 +300,7 @@ mod tests {
             "tcp:host:123",
         ] {
             assert!(endpoint.parse::<ElectrumEndpoint>().is_err(), "{endpoint}");
-            assert!(p2p_endpoint(endpoint).is_err(), "{endpoint}");
+            assert!(endpoint.parse::<P2pEndpoint>().is_err(), "{endpoint}");
         }
         for url in [
             "ftp://host/",

@@ -1,4 +1,4 @@
-use super::{MAX_MESSAGE, connect, result, validate_socket_url};
+use super::{MAX_MESSAGE, connect, endpoint::SocketUrl, result};
 use anyhow::{Context, Result, bail};
 use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned, pki_types::ServerName};
 use serde_json::{Value, json};
@@ -13,7 +13,7 @@ use url::{Host, Url};
 /// A validated address. Private fields keep the URL and transport consistent.
 #[derive(Clone, Debug)]
 pub struct ElectrumEndpoint {
-    url: Url,
+    url: SocketUrl,
     transport: Transport,
 }
 
@@ -24,7 +24,7 @@ enum Transport {
 }
 
 impl ElectrumEndpoint {
-    pub fn url(&self) -> &Url {
+    pub fn socket_url(&self) -> &SocketUrl {
         &self.url
     }
 }
@@ -41,10 +41,10 @@ impl TryFrom<Url> for ElectrumEndpoint {
     type Error = anyhow::Error;
 
     fn try_from(url: Url) -> Result<Self> {
-        validate_socket_url(&url)?;
-        let transport = match url.scheme() {
+        let url = SocketUrl::try_from(url)?;
+        let transport = match url.url().scheme() {
             "tcp" => Transport::Tcp,
-            "tls" | "ssl" => Transport::Tls(server_name(&url)?),
+            "tls" | "ssl" => Transport::Tls(server_name(url.url())?),
             _ => bail!("Electrum endpoint must use tcp://, tls://, or ssl://"),
         };
         Ok(Self { url, transport })
@@ -102,7 +102,7 @@ pub struct Electrum {
 impl Electrum {
     pub fn connect(endpoint: &ElectrumEndpoint) -> Result<Self> {
         let stream = match &endpoint.transport {
-            Transport::Tcp => Stream::Tcp(connect(endpoint.url())?),
+            Transport::Tcp => Stream::Tcp(connect(endpoint.socket_url())?),
             Transport::Tls(name) => {
                 let config = ClientConfig::builder_with_provider(Arc::new(
                     rustls::crypto::ring::default_provider(),
@@ -113,7 +113,7 @@ impl Electrum {
                 })
                 .with_no_client_auth();
                 let mut connection = ClientConnection::new(Arc::new(config), name.clone())?;
-                let mut socket = connect(endpoint.url())?;
+                let mut socket = connect(endpoint.socket_url())?;
                 // Finish certificate verification before returning a connected client.
                 while connection.is_handshaking() {
                     connection

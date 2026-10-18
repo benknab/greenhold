@@ -1,18 +1,19 @@
 pub mod electrum;
-mod peer;
+pub mod endpoint;
+pub mod peer;
 pub mod rpc;
 
 use anyhow::{Context, Result, bail};
+use endpoint::SocketUrl;
 use serde_json::{Value, json};
 use std::{net::TcpStream, time::Duration};
-use url::Url;
 
 const TIMEOUT: Duration = Duration::from_secs(20);
 const MAX_MESSAGE: u64 = 64 * 1024;
 
 pub fn status(
     electrum: &electrum::ElectrumEndpoint,
-    peer: &Url,
+    peer: &peer::P2pEndpoint,
     rpc: &rpc::RpcConfig,
 ) -> Result<Value> {
     let mut electrum = electrum::Electrum::connect(electrum)?;
@@ -43,24 +44,9 @@ pub fn status(
     }))
 }
 
-pub(super) fn validate_socket_url(url: &Url) -> Result<()> {
-    if url.host().is_none()
-        || !matches!(url.port(), Some(1..))
-        || !url.username().is_empty()
-        || url.password().is_some()
-        || !matches!(url.path(), "" | "/")
-        || url.query().is_some()
-        || url.fragment().is_some()
-    {
-        bail!(
-            "endpoint must use SCHEME://HOST:PORT with a nonzero port and no credentials, path, query, or fragment"
-        );
-    }
-    Ok(())
-}
-
-fn connect(endpoint: &Url) -> Result<TcpStream> {
+fn connect(endpoint: &SocketUrl) -> Result<TcpStream> {
     let addresses = endpoint
+        .url()
         .socket_addrs(|| None)
         .context("node DNS lookup failed")?;
     for address in addresses {

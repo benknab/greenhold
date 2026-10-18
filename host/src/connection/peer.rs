@@ -1,4 +1,4 @@
-use super::{MAX_MESSAGE, connect};
+use super::{MAX_MESSAGE, connect, endpoint::SocketUrl};
 use anyhow::{Context, Result, bail};
 use bitcoin::{
     consensus::{deserialize, serialize},
@@ -12,15 +12,46 @@ use serde_json::{Value, json};
 use std::{
     io::{Read, Write},
     net::{Ipv4Addr, SocketAddr},
+    str::FromStr,
     time::{SystemTime, UNIX_EPOCH},
 };
 use url::Url;
 
-pub fn handshake(endpoint: &Url) -> Result<Value> {
-    if endpoint.scheme() != "tcp" {
-        bail!("unsupported P2P transport");
+#[derive(Clone, Debug)]
+pub struct P2pEndpoint {
+    url: SocketUrl,
+}
+
+impl P2pEndpoint {
+    pub fn socket_url(&self) -> &SocketUrl {
+        &self.url
     }
-    exchange(&mut connect(endpoint)?)
+}
+
+impl FromStr for P2pEndpoint {
+    type Err = anyhow::Error;
+
+    fn from_str(text: &str) -> Result<Self> {
+        Self::try_from(Url::parse(text).context("invalid P2P URL")?)
+    }
+}
+
+impl TryFrom<Url> for P2pEndpoint {
+    type Error = anyhow::Error;
+
+    fn try_from(url: Url) -> Result<Self> {
+        let endpoint = Self {
+            url: SocketUrl::try_from(url)?,
+        };
+        if endpoint.socket_url().url().scheme() != "tcp" {
+            bail!("P2P endpoint must use tcp://");
+        }
+        Ok(endpoint)
+    }
+}
+
+pub fn handshake(endpoint: &P2pEndpoint) -> Result<Value> {
+    exchange(&mut connect(endpoint.socket_url())?)
 }
 
 fn exchange(stream: &mut (impl Read + Write)) -> Result<Value> {
@@ -97,7 +128,7 @@ mod tests {
     #[test]
     fn completes_mainnet_handshake_and_answers_ping() -> Result<()> {
         let listener = TcpListener::bind("127.0.0.1:0")?;
-        let endpoint = Url::parse(&format!("tcp://{}", listener.local_addr()?))?;
+        let endpoint = format!("tcp://{}", listener.local_addr()?).parse()?;
         let task = thread::spawn(move || -> Result<()> {
             let (mut socket, _) = listener.accept()?;
             socket.set_read_timeout(Some(super::super::TIMEOUT))?;
