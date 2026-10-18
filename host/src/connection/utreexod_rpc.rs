@@ -25,6 +25,7 @@ impl RpcConfig {
     }
 }
 
+/// Utreexod's HTTP JSON-RPC client.
 pub struct Rpc<'a> {
     config: &'a RpcConfig,
     client: Agent,

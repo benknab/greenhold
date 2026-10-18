@@ -1,4 +1,4 @@
-use crate::connection::{electrum::ElectrumEndpoint, peer::P2pEndpoint, rpc::RpcConfig};
+use crate::connection::{electrum::ElectrumEndpoint, peer::P2pEndpoint, utreexod_rpc::RpcConfig};
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand};
 use url::Url;
