@@ -1,4 +1,4 @@
-mod electrum;
+pub mod electrum;
 mod peer;
 pub mod rpc;
 
@@ -10,8 +10,23 @@ use url::Url;
 const TIMEOUT: Duration = Duration::from_secs(20);
 const MAX_MESSAGE: u64 = 64 * 1024;
 
-pub fn status(electrum: &Url, peer: &Url, rpc: &rpc::RpcConfig) -> Result<Value> {
-    let electrum_tip = electrum::tip(electrum)?;
+pub fn status(
+    electrum: &electrum::ElectrumEndpoint,
+    peer: &Url,
+    rpc: &rpc::RpcConfig,
+) -> Result<Value> {
+    let mut electrum = electrum::Electrum::connect(electrum)?;
+    let [server_version, protocol_version]: [String; 2] = serde_json::from_value(electrum.call(
+        "server.version",
+        &[
+            json!(concat!(
+                env!("CARGO_PKG_NAME"),
+                "/",
+                env!("CARGO_PKG_VERSION")
+            )),
+            json!("1.4"),
+        ],
+    )?)?;
     let mut client = rpc::Rpc::new(rpc)?;
     let tip = client.call("getbestblockhash", &json!([]))?;
     let hash = tip.as_str().ok_or("RPC returned a non-string block hash")?;
@@ -22,10 +37,26 @@ pub fn status(electrum: &Url, peer: &Url, rpc: &rpc::RpcConfig) -> Result<Value>
     let roots = client.call("getutreexoroots", &json!([hash]))?;
     let peer = peer::handshake(peer)?;
     Ok(json!({
-        "electrum": electrum_tip,
+        "electrum": {"server_version": server_version, "protocol_version": protocol_version},
         "utreexod_rpc": {"block_hash": hash, "roots": roots},
         "utreexod": peer,
     }))
+}
+
+pub(super) fn validate_socket_url(url: &Url) -> std::result::Result<(), &'static str> {
+    if url.host().is_none()
+        || !matches!(url.port(), Some(1..))
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || !matches!(url.path(), "" | "/")
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err(
+            "endpoint must use SCHEME://HOST:PORT with a nonzero port and no credentials, path, query, or fragment",
+        );
+    }
+    Ok(())
 }
 
 fn connect(endpoint: &Url) -> Result<TcpStream> {

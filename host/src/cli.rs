@@ -1,4 +1,7 @@
-use crate::{Result, connection::rpc::RpcConfig};
+use crate::{
+    Result,
+    connection::{electrum::ElectrumEndpoint, rpc::RpcConfig, validate_socket_url},
+};
 use clap::{Args, Parser, Subcommand};
 use url::Url;
 
@@ -30,10 +33,9 @@ pub struct ConnectionConfig {
     #[arg(
         long,
         value_name = "ENDPOINT",
-        value_parser = electrum_endpoint,
         default_value = DEFAULT_ELECTRUM
     )]
-    pub electrum: Url,
+    pub electrum: ElectrumEndpoint,
 
     /// Utreexod mainnet Bitcoin v1 P2P endpoint: tcp://HOST:PORT.
     #[arg(
@@ -102,35 +104,11 @@ impl std::fmt::Debug for Redacted {
     }
 }
 
-fn electrum_endpoint(text: &str) -> std::result::Result<Url, &'static str> {
-    let url = socket_url(text)?;
-    if !matches!(url.scheme(), "tcp" | "tls" | "ssl") {
-        return Err("Electrum endpoint must use tcp://, tls://, or ssl://");
-    }
-    Ok(url)
-}
-
 fn p2p_endpoint(text: &str) -> std::result::Result<Url, &'static str> {
-    let url = socket_url(text)?;
+    let url = Url::parse(text).map_err(|_| "invalid endpoint URL")?;
+    validate_socket_url(&url)?;
     if url.scheme() != "tcp" {
         return Err("P2P endpoint must use tcp://");
-    }
-    Ok(url)
-}
-
-fn socket_url(text: &str) -> std::result::Result<Url, &'static str> {
-    let url = Url::parse(text).map_err(|_| "invalid endpoint URL")?;
-    if url.host().is_none()
-        || !matches!(url.port(), Some(1..))
-        || !url.username().is_empty()
-        || url.password().is_some()
-        || !matches!(url.path(), "" | "/")
-        || url.query().is_some()
-        || url.fragment().is_some()
-    {
-        return Err(
-            "endpoint must use SCHEME://HOST:PORT with a nonzero port and no credentials, path, query, or fragment",
-        );
     }
     Ok(url)
 }
@@ -171,11 +149,11 @@ mod tests {
     fn defaults_and_overrides() -> Result<()> {
         let Command::Nodes(nodes) = Cli::try_parse_from(["host", "nodes"])?.command;
         assert_eq!(
-            nodes.electrum.host_str(),
+            nodes.electrum.url().host_str(),
             Some("electrum.hospitablealpaca.com")
         );
-        assert_eq!(nodes.electrum.port(), Some(50002));
-        assert_eq!(nodes.electrum.scheme(), "tls");
+        assert_eq!(nodes.electrum.url().port(), Some(50002));
+        assert_eq!(nodes.electrum.url().scheme(), "tls");
         assert_eq!(nodes.utreexod.port(), Some(8335));
         assert!(nodes.utreexod_rpc.is_none());
         assert!(nodes.rpc_config().is_ok());
@@ -195,7 +173,7 @@ mod tests {
         ])?
         .command;
         assert_eq!(
-            nodes.electrum.host(),
+            nodes.electrum.url().host(),
             Some(url::Host::Ipv6(std::net::Ipv6Addr::LOCALHOST))
         );
         assert_eq!(nodes.utreexod.host_str(), Some("localhost"));
@@ -275,7 +253,9 @@ mod tests {
             ("tls://localhost:50002", "tls"),
             ("ssl://localhost:50002", "ssl"),
         ] {
-            assert_eq!(electrum_endpoint(text)?.scheme(), scheme);
+            let Command::Nodes(config) =
+                Cli::try_parse_from(["host", "nodes", "--electrum", text])?.command;
+            assert_eq!(config.electrum.url().scheme(), scheme);
         }
         for text in [
             "localhost:50002",
@@ -285,7 +265,7 @@ mod tests {
             "ssl://localhost",
             "tcp://ssl://localhost:50002",
         ] {
-            assert!(electrum_endpoint(text).is_err());
+            assert!(Cli::try_parse_from(["host", "nodes", "--electrum", text]).is_err());
         }
         Ok(())
     }
@@ -328,7 +308,7 @@ mod tests {
             "tcp://host:123#fragment",
             "tcp:host:123",
         ] {
-            assert!(electrum_endpoint(endpoint).is_err(), "{endpoint}");
+            assert!(endpoint.parse::<ElectrumEndpoint>().is_err(), "{endpoint}");
             assert!(p2p_endpoint(endpoint).is_err(), "{endpoint}");
         }
         for url in [
