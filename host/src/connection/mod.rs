@@ -4,6 +4,7 @@ pub mod socket;
 pub mod utreexod_rpc;
 
 use anyhow::{Context, Result, bail};
+use bitcoin::hex::DisplayHex;
 use serde_json::{Value, json};
 use std::time::Duration;
 
@@ -28,17 +29,19 @@ pub fn status(
         ],
     )?)?;
     let mut client = utreexod_rpc::Client::new(rpc);
-    let tip = client.call("getbestblockhash", &json!([]))?;
-    let hash = tip
-        .as_str()
-        .context("RPC returned a non-string block hash")?;
-    let _: bitcoin::BlockHash = hash.parse().context("RPC returned an invalid block hash")?;
+    let hash = client.best_block_hash()?;
     // Bind the roots lookup to this response, not to a second tip lookup.
-    let roots = client.call("getutreexoroots", &json!([hash]))?;
+    let roots = client.utreexo_roots(&hash)?;
     let peer = peer::probe(peer, TIMEOUT)?;
     Ok(json!({
         "electrum": {"server_version": server_version, "protocol_version": protocol_version},
-        "utreexod_rpc": {"block_hash": hash, "roots": roots},
+        "utreexod_rpc": {
+            "block_hash": hash.to_string(),
+            "roots": {
+                "numleaves": roots.num_leaves(),
+                "roots": roots.roots().iter().map(|root| root.as_hex().to_string()).collect::<Vec<_>>()
+            }
+        },
         "utreexod": {"protocol_version": peer.version, "start_height": peer.start_height},
     }))
 }
