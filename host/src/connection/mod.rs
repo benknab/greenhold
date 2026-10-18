@@ -2,7 +2,7 @@ pub mod electrum;
 mod peer;
 pub mod rpc;
 
-use crate::Result;
+use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 use std::{net::TcpStream, time::Duration};
 use url::Url;
@@ -29,10 +29,10 @@ pub fn status(
     )?)?;
     let mut client = rpc::Rpc::new(rpc)?;
     let tip = client.call("getbestblockhash", &json!([]))?;
-    let hash = tip.as_str().ok_or("RPC returned a non-string block hash")?;
-    let _: bitcoin::BlockHash = hash
-        .parse()
-        .map_err(|_| "RPC returned an invalid block hash")?;
+    let hash = tip
+        .as_str()
+        .context("RPC returned a non-string block hash")?;
+    let _: bitcoin::BlockHash = hash.parse().context("RPC returned an invalid block hash")?;
     // Bind the roots lookup to this response, not to a second tip lookup.
     let roots = client.call("getutreexoroots", &json!([hash]))?;
     let peer = peer::handshake(peer)?;
@@ -43,7 +43,7 @@ pub fn status(
     }))
 }
 
-pub(super) fn validate_socket_url(url: &Url) -> std::result::Result<(), &'static str> {
+pub(super) fn validate_socket_url(url: &Url) -> Result<()> {
     if url.host().is_none()
         || !matches!(url.port(), Some(1..))
         || !url.username().is_empty()
@@ -52,8 +52,8 @@ pub(super) fn validate_socket_url(url: &Url) -> std::result::Result<(), &'static
         || url.query().is_some()
         || url.fragment().is_some()
     {
-        return Err(
-            "endpoint must use SCHEME://HOST:PORT with a nonzero port and no credentials, path, query, or fragment",
+        bail!(
+            "endpoint must use SCHEME://HOST:PORT with a nonzero port and no credentials, path, query, or fragment"
         );
     }
     Ok(())
@@ -62,7 +62,7 @@ pub(super) fn validate_socket_url(url: &Url) -> std::result::Result<(), &'static
 fn connect(endpoint: &Url) -> Result<TcpStream> {
     let addresses = endpoint
         .socket_addrs(|| None)
-        .map_err(|_| "node DNS lookup failed")?;
+        .context("node DNS lookup failed")?;
     for address in addresses {
         if let Ok(socket) = TcpStream::connect_timeout(&address, TIMEOUT) {
             socket.set_read_timeout(Some(TIMEOUT))?;
@@ -70,15 +70,12 @@ fn connect(endpoint: &Url) -> Result<TcpStream> {
             return Ok(socket);
         }
     }
-    Err("node connection failed".into())
+    bail!("node connection failed")
 }
 
 fn result(reply: &Value, id: u64) -> Result<Value> {
     if reply.get("id") != Some(&json!(id)) || !reply["error"].is_null() {
-        return Err("node rejected request or returned a mismatched response ID".into());
+        bail!("node rejected request or returned a mismatched response ID");
     }
-    reply
-        .get("result")
-        .cloned()
-        .ok_or_else(|| "missing node result".into())
+    reply.get("result").cloned().context("missing node result")
 }

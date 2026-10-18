@@ -1,5 +1,5 @@
 use super::{MAX_MESSAGE, TIMEOUT, result};
-use crate::Result;
+use anyhow::{Context, Result, anyhow, bail};
 use reqwest::{blocking::Client, redirect::Policy};
 use serde_json::{Value, json};
 use std::{fmt, io::Read};
@@ -38,7 +38,7 @@ impl<'a> Rpc<'a> {
                 .timeout(TIMEOUT)
                 .redirect(Policy::none())
                 .build()
-                .map_err(|_| "RPC client setup failed")?,
+                .context("RPC client setup failed")?,
             id: 0,
         })
     }
@@ -56,24 +56,26 @@ impl<'a> Rpc<'a> {
         if let Some((user, password)) = &self.config.credentials {
             request = request.basic_auth(user, Some(password));
         }
-        let response = request.send().map_err(|_| "RPC transport failed")?;
+        let response = request
+            .send()
+            .map_err(|_| anyhow!("RPC transport failed"))?;
         if !response.status().is_success() {
-            return Err(format!(
+            bail!(
                 "RPC HTTP {}; check authentication and node availability",
                 response.status().as_u16()
-            )
-            .into());
+            );
         }
         let mut bytes = Vec::new();
         response
             .take(MAX_MESSAGE + 1)
             .read_to_end(&mut bytes)
-            .map_err(|_| "RPC response read failed")?;
+            .map_err(|_| anyhow!("RPC response read failed"))?;
         if bytes.len() as u64 > MAX_MESSAGE {
-            return Err("RPC response exceeds size limit".into());
+            bail!("RPC response exceeds size limit");
         }
         // Remote bodies and transport errors may contain secrets. Do not print them.
-        let reply: Value = serde_json::from_slice(&bytes).map_err(|_| "invalid RPC JSON")?;
+        let reply: Value =
+            serde_json::from_slice(&bytes).map_err(|_| anyhow!("invalid RPC JSON"))?;
         result(&reply, self.id)
     }
 }
@@ -92,7 +94,7 @@ mod tests {
         loop {
             let mut line = String::new();
             if stream.read_line(&mut line)? == 0 {
-                return Err("request ended before headers".into());
+                bail!("request ended before headers");
             }
             if line == "\r\n" {
                 return Ok(headers);
@@ -122,7 +124,7 @@ mod tests {
             let length = headers
                 .lines()
                 .find_map(|line| line.strip_prefix("content-length: "))
-                .ok_or("missing request length")?
+                .context("missing request length")?
                 .parse::<usize>()?;
             let mut request = vec![0; length];
             stream.read_exact(&mut request)?;
@@ -155,7 +157,7 @@ mod tests {
                 Rpc::new(&config)?.call("getbestblockhash", &json!([]))?,
                 json!("tip")
             );
-            task.join().map_err(|_| "mock server panicked")??;
+            task.join().map_err(|_| anyhow!("mock server panicked"))??;
         }
         Ok(())
     }
@@ -188,7 +190,7 @@ mod tests {
             let response = Rpc::new(&config)?.call("getbestblockhash", &json!([]));
             assert!(response.is_err());
             assert!(!format!("{response:?}").contains("secret"));
-            task.join().map_err(|_| "mock server panicked")??;
+            task.join().map_err(|_| anyhow!("mock server panicked"))??;
         }
         Ok(())
     }

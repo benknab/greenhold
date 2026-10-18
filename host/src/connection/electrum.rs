@@ -1,5 +1,5 @@
 use super::{MAX_MESSAGE, connect, result, validate_socket_url};
-use crate::Result;
+use anyhow::{Context, Result, bail};
 use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned, pki_types::ServerName};
 use serde_json::{Value, json};
 use std::{
@@ -30,31 +30,31 @@ impl ElectrumEndpoint {
 }
 
 impl FromStr for ElectrumEndpoint {
-    type Err = Box<dyn std::error::Error + Send + Sync>;
+    type Err = anyhow::Error;
 
     fn from_str(text: &str) -> Result<Self> {
-        Self::try_from(Url::parse(text)?)
+        Self::try_from(Url::parse(text).context("invalid Electrum URL")?)
     }
 }
 
 impl TryFrom<Url> for ElectrumEndpoint {
-    type Error = Box<dyn std::error::Error + Send + Sync>;
+    type Error = anyhow::Error;
 
     fn try_from(url: Url) -> Result<Self> {
         validate_socket_url(&url)?;
         let transport = match url.scheme() {
             "tcp" => Transport::Tcp,
             "tls" | "ssl" => Transport::Tls(server_name(&url)?),
-            _ => return Err("Electrum endpoint must use tcp://, tls://, or ssl://".into()),
+            _ => bail!("Electrum endpoint must use tcp://, tls://, or ssl://"),
         };
         Ok(Self { url, transport })
     }
 }
 
 fn server_name(endpoint: &Url) -> Result<ServerName<'static>> {
-    match endpoint.host().ok_or("missing Electrum TLS host")? {
+    match endpoint.host().context("missing Electrum TLS host")? {
         Host::Domain(host) => {
-            ServerName::try_from(host.to_owned()).map_err(|_| "invalid Electrum TLS host".into())
+            ServerName::try_from(host.to_owned()).context("invalid Electrum TLS host")
         }
         Host::Ipv4(ip) => Ok(ServerName::IpAddress(ip.into())),
         Host::Ipv6(ip) => Ok(ServerName::IpAddress(ip.into())),
@@ -116,7 +116,9 @@ impl Electrum {
                 let mut socket = connect(endpoint.url())?;
                 // Finish certificate verification before returning a connected client.
                 while connection.is_handshaking() {
-                    connection.complete_io(&mut socket)?;
+                    connection
+                        .complete_io(&mut socket)
+                        .context("Electrum TLS handshake failed")?;
                 }
                 Stream::Tls(Box::new(StreamOwned::new(connection, socket)))
             }
@@ -131,22 +133,22 @@ impl Electrum {
     /// I/O or protocol errors close the connection; matched server errors do not.
     pub fn call(&mut self, method: &str, params: &[Value]) -> Result<Value> {
         let id = self.next_id;
-        let next_id = id.checked_add(1).ok_or("Electrum request ID exhausted")?;
+        let next_id = id.checked_add(1).context("Electrum request ID exhausted")?;
         let mut request = serde_json::to_vec(&json!({"id":id,"method":method,"params":params}))?;
         request.push(b'\n');
         if request.len() as u64 > MAX_MESSAGE {
-            return Err("Electrum request exceeds size limit".into());
+            bail!("Electrum request exceeds size limit");
         }
-        let mut stream = self.stream.take().ok_or("Electrum connection is closed")?;
+        let mut stream = self
+            .stream
+            .take()
+            .context("Electrum connection is closed")?;
         self.next_id = next_id;
         stream
             .get_mut()
             .write_all(&request)
-            .map_err(|_| "Electrum write failed")?;
-        stream
-            .get_mut()
-            .flush()
-            .map_err(|_| "Electrum flush failed")?;
+            .context("Electrum write failed")?;
+        stream.get_mut().flush().context("Electrum flush failed")?;
         let reply = read_reply(&mut stream, id)?;
         self.stream = Some(stream);
         result(&reply, id)
@@ -159,19 +161,19 @@ fn read_reply(stream: &mut impl BufRead, id: u64) -> Result<Value> {
         .by_ref()
         .take(MAX_MESSAGE + 1)
         .read_until(b'\n', &mut bytes)
-        .map_err(|_| "Electrum read failed")?;
+        .context("Electrum read failed")?;
     if bytes.len() as u64 > MAX_MESSAGE || bytes.last() != Some(&b'\n') {
-        return Err("Electrum response is truncated or exceeds size limit".into());
+        bail!("Electrum response is truncated or exceeds size limit");
     }
-    let reply: Value = serde_json::from_slice(&bytes).map_err(|_| "invalid Electrum JSON")?;
+    let reply: Value = serde_json::from_slice(&bytes).context("invalid Electrum JSON")?;
     if reply.get("method").is_some() {
-        return Err("unexpected Electrum notification or server request".into());
+        bail!("unexpected Electrum notification or server request");
     }
     if reply.get("id") != Some(&json!(id)) {
-        return Err("Electrum response ID does not match request".into());
+        bail!("Electrum response ID does not match request");
     }
     if reply.get("result").is_none() && reply["error"].is_null() {
-        return Err("missing Electrum result or error".into());
+        bail!("missing Electrum result or error");
     }
     Ok(reply)
 }
@@ -254,7 +256,8 @@ mod tests {
                 .is_err()
         );
         assert_eq!(client.call("server.ping", &[])?, Value::Null);
-        task.join().map_err(|_| "mock Electrum server panicked")??;
+        task.join()
+            .map_err(|_| anyhow::anyhow!("mock Electrum server panicked"))??;
         Ok(())
     }
 
@@ -281,11 +284,12 @@ mod tests {
             client
                 .call("server.ping", &[])
                 .err()
-                .ok_or("expected closed client")?
+                .context("expected closed client")?
                 .to_string(),
             "Electrum connection is closed"
         );
-        task.join().map_err(|_| "mock Electrum server panicked")??;
+        task.join()
+            .map_err(|_| anyhow::anyhow!("mock Electrum server panicked"))??;
         Ok(())
     }
 

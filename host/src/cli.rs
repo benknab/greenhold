@@ -1,7 +1,5 @@
-use crate::{
-    Result,
-    connection::{electrum::ElectrumEndpoint, rpc::RpcConfig, validate_socket_url},
-};
+use crate::connection::{electrum::ElectrumEndpoint, rpc::RpcConfig, validate_socket_url};
+use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand};
 use url::Url;
 
@@ -69,11 +67,11 @@ impl ConnectionConfig {
                 let user = self
                     .utreexod_rpc_user
                     .as_ref()
-                    .ok_or("--utreexod-rpc requires --utreexod-rpc-user")?;
+                    .context("--utreexod-rpc requires --utreexod-rpc-user")?;
                 let password = self
                     .utreexod_rpc_password
                     .as_ref()
-                    .ok_or("--utreexod-rpc requires --utreexod-rpc-password")?;
+                    .context("--utreexod-rpc requires --utreexod-rpc-password")?;
                 Ok(RpcConfig::new(
                     url.clone(),
                     Some((user.clone(), password.value().to_owned())),
@@ -104,31 +102,31 @@ impl std::fmt::Debug for Redacted {
     }
 }
 
-fn p2p_endpoint(text: &str) -> std::result::Result<Url, &'static str> {
-    let url = Url::parse(text).map_err(|_| "invalid endpoint URL")?;
+fn p2p_endpoint(text: &str) -> Result<Url> {
+    let url = Url::parse(text).context("invalid endpoint URL")?;
     validate_socket_url(&url)?;
     if url.scheme() != "tcp" {
-        return Err("P2P endpoint must use tcp://");
+        bail!("P2P endpoint must use tcp://");
     }
     Ok(url)
 }
 
-fn rpc_user(text: &str) -> std::result::Result<String, &'static str> {
+fn rpc_user(text: &str) -> Result<String> {
     if text.is_empty() || text.contains(':') {
-        return Err("RPC username must be nonempty and must not contain ':'");
+        bail!("RPC username must be nonempty and must not contain ':'");
     }
     Ok(text.to_owned())
 }
 
-fn rpc_password(text: &str) -> std::result::Result<Redacted, &'static str> {
+fn rpc_password(text: &str) -> Result<Redacted> {
     if text.is_empty() {
-        return Err("RPC password must be nonempty");
+        bail!("RPC password must be nonempty");
     }
     Ok(Redacted::new(text.to_owned()))
 }
 
-fn rpc_url(text: &str) -> std::result::Result<Url, &'static str> {
-    let url = Url::parse(text).map_err(|_| "invalid RPC URL")?;
+fn rpc_url(text: &str) -> Result<Url> {
+    let url = Url::parse(text).context("invalid RPC URL")?;
     if !matches!(url.scheme(), "http" | "https")
         || url.host_str().is_none()
         || !url.username().is_empty()
@@ -136,7 +134,7 @@ fn rpc_url(text: &str) -> std::result::Result<Url, &'static str> {
         || url.query().is_some()
         || url.fragment().is_some()
     {
-        return Err("RPC URL must use HTTP(S) without credentials, query, or fragment");
+        bail!("RPC URL must use HTTP(S) without credentials, query, or fragment");
     }
     Ok(url)
 }
@@ -217,7 +215,7 @@ mod tests {
         ] {
             let error = Cli::try_parse_from(args)
                 .err()
-                .ok_or("incomplete RPC arguments must fail during parsing")?;
+                .context("incomplete RPC arguments must fail during parsing")?;
             assert_eq!(
                 error.kind(),
                 clap::error::ErrorKind::MissingRequiredArgument
@@ -240,7 +238,7 @@ mod tests {
                 password,
             ])
             .err()
-            .ok_or("invalid RPC credentials must fail during parsing")?;
+            .context("invalid RPC credentials must fail during parsing")?;
             assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
         }
         Ok(())

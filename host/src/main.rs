@@ -1,16 +1,15 @@
 mod cli;
 mod connection;
 
+use anyhow::Result;
 use clap::Parser;
 use std::process::ExitCode;
-
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 fn main() -> ExitCode {
     match run(cli::Cli::parse()) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("{error}");
+            eprintln!("{error:#}");
             ExitCode::FAILURE
         }
     }

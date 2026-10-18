@@ -1,5 +1,5 @@
 use super::{MAX_MESSAGE, connect};
-use crate::Result;
+use anyhow::{Context, Result, bail};
 use bitcoin::{
     consensus::{deserialize, serialize},
     p2p::{
@@ -18,7 +18,7 @@ use url::Url;
 
 pub fn handshake(endpoint: &Url) -> Result<Value> {
     if endpoint.scheme() != "tcp" {
-        return Err("unsupported P2P transport".into());
+        bail!("unsupported P2P transport");
     }
     exchange(&mut connect(endpoint)?)
 }
@@ -49,21 +49,21 @@ fn exchange(stream: &mut (impl Read + Write)) -> Result<Value> {
                 send(stream, NetworkMessage::Verack)?;
             }
             NetworkMessage::Verack => {
-                return remote.ok_or_else(|| "P2P verack before version".into());
+                return remote.context("P2P verack before version");
             }
             NetworkMessage::Ping(nonce) => send(stream, NetworkMessage::Pong(nonce))?,
-            NetworkMessage::Reject(_) => return Err("P2P handshake rejected".into()),
+            NetworkMessage::Reject(_) => bail!("P2P handshake rejected"),
             _ => {}
         }
     }
-    Err("too many unrelated P2P messages".into())
+    bail!("too many unrelated P2P messages")
 }
 
 fn send(stream: &mut impl Write, message: NetworkMessage) -> Result<()> {
     stream
         .write_all(&serialize(&RawNetworkMessage::new(Magic::BITCOIN, message)))
-        .map_err(|_| "P2P write failed")?;
-    stream.flush().map_err(|_| "P2P flush failed")?;
+        .context("P2P write failed")?;
+    stream.flush().context("P2P flush failed")?;
     Ok(())
 }
 
@@ -71,21 +71,21 @@ fn receive(stream: &mut impl Read) -> Result<NetworkMessage> {
     let mut header = [0; 24];
     stream
         .read_exact(&mut header)
-        .map_err(|_| "P2P header read failed")?;
+        .context("P2P header read failed")?;
     if header[..4] != Magic::BITCOIN.to_bytes() {
-        return Err("wrong P2P network magic".into());
+        bail!("wrong P2P network magic");
     }
     let size = u32::from_le_bytes(header[16..20].try_into()?);
     if u64::from(size) > MAX_MESSAGE {
-        return Err("P2P response exceeds size limit".into());
+        bail!("P2P response exceeds size limit");
     }
     let mut bytes = header.to_vec();
     bytes.resize(24 + usize::try_from(size)?, 0);
     stream
         .read_exact(&mut bytes[24..])
-        .map_err(|_| "P2P body read failed")?;
+        .context("P2P body read failed")?;
     let message: RawNetworkMessage =
-        deserialize(&bytes).map_err(|_| "invalid P2P message or checksum")?;
+        deserialize(&bytes).context("invalid P2P message or checksum")?;
     Ok(message.into_payload())
 }
 
@@ -102,7 +102,7 @@ mod tests {
             let (mut socket, _) = listener.accept()?;
             socket.set_read_timeout(Some(super::super::TIMEOUT))?;
             let NetworkMessage::Version(version) = receive(&mut socket)? else {
-                return Err("expected version".into());
+                bail!("expected version");
             };
             send(&mut socket, NetworkMessage::Version(version))?;
             assert!(matches!(receive(&mut socket)?, NetworkMessage::Verack));
@@ -111,7 +111,8 @@ mod tests {
             send(&mut socket, NetworkMessage::Verack)
         });
         assert!(handshake(&endpoint)?["protocol_version"].as_u64().is_some());
-        task.join().map_err(|_| "mock peer panicked")??;
+        task.join()
+            .map_err(|_| anyhow::anyhow!("mock peer panicked"))??;
         Ok(())
     }
 

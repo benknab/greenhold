@@ -9,6 +9,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+anyhow = "1"
 bitcoin = "0.32"
 clap = { version = "4", features = ["derive"] }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
