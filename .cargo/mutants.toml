@@ -1,0 +1,9 @@
+# Native trust boundaries. Guest execution and real-node checks run separately.
+examine_globs = ["core/src/context.rs", "core/src/network.rs", "host/src/context.rs", "host/src/connection/peer/mod.rs"]
+exclude_globs = ["**/tests/**", "**/tests.rs"]
+test_package = ["walledcity-core", "walledcity-host"]
+additional_cargo_args = ["--locked", "--release"]
+# Exercise native unit tests and the core contract, without rebuilding the node harness.
+additional_cargo_test_args = ["--lib", "--bins", "--test=context"]
+minimum_test_timeout = 30
+timeout_multiplier = 5

@@ -2,6 +2,9 @@ mod cli;
 mod connection;
 mod context;
 
+#[cfg(test)]
+mod test_support;
+
 use anyhow::Result;
 use clap::Parser;
 use std::process::ExitCode;

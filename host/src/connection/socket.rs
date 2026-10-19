@@ -57,3 +57,6 @@ pub(super) fn connect_tcp(endpoint: &SocketUrl) -> Result<TcpStream> {
     }
     bail!("node connection failed")
 }
+
+#[cfg(test)]
+mod tests;

@@ -23,3 +23,7 @@ webpki-roots = "1"
 walledcity-core.workspace = true
 walledcity-guest-builder.workspace = true
 risc0-zkvm = { workspace = true, features = ["client", "disable-dev-mode"] }
+
+[dev-dependencies]
+testcontainers = { version = "=0.28.0", features = ["blocking"] }
+wait-timeout = "0.2"

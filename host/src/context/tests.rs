@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::{accept, read_http};
 use anyhow::anyhow;
 use bitcoin::{BlockHash, consensus::serialize, hashes::Hash, hex::DisplayHex};
 use serde_json::{Value, json};
@@ -6,7 +7,6 @@ use std::{
     io::{BufRead, BufReader, Write},
     net::TcpListener,
     thread::{self, JoinHandle},
-    time::Duration,
 };
 use url::Url;
 
@@ -27,25 +27,6 @@ fn respond(request: &Value, expected: &Step, id: u64) -> Value {
     reply
 }
 
-fn read_http(stream: &mut impl BufRead) -> Result<Value> {
-    let mut length = None;
-    loop {
-        let mut line = String::new();
-        if stream.read_line(&mut line)? == 0 {
-            bail!("request ended before HTTP headers");
-        }
-        if line == "\r\n" {
-            break;
-        }
-        if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length: ") {
-            length = Some(value.trim().parse::<usize>()?);
-        }
-    }
-    let mut body = vec![0; length.context("missing content length")?];
-    stream.read_exact(&mut body)?;
-    Ok(serde_json::from_slice(&body)?)
-}
-
 fn serve_rpc(steps: Vec<Step>) -> Result<(utreexod_rpc::Config, JoinHandle<Result<()>>)> {
     let listener = TcpListener::bind("127.0.0.1:0")?;
     let config = utreexod_rpc::Config::new(
@@ -54,10 +35,9 @@ fn serve_rpc(steps: Vec<Step>) -> Result<(utreexod_rpc::Config, JoinHandle<Resul
     );
     let task = thread::spawn(move || {
         for (index, expected) in steps.iter().enumerate() {
-            let (socket, _) = listener.accept()?;
-            socket.set_read_timeout(Some(Duration::from_secs(20)))?;
+            let (socket, _) = accept(&listener)?;
             let mut stream = BufReader::new(socket);
-            let request = read_http(&mut stream)?;
+            let (_, request) = read_http(&mut stream)?;
             assert_eq!(request["jsonrpc"], "1.0");
             let reply = respond(&request, expected, u64::try_from(index)? + 1).to_string();
             write!(
@@ -75,8 +55,7 @@ fn serve_electrum(steps: Vec<Step>) -> Result<(electrum::Endpoint, JoinHandle<Re
     let listener = TcpListener::bind("127.0.0.1:0")?;
     let endpoint = format!("tcp://{}", listener.local_addr()?).parse()?;
     let task = thread::spawn(move || {
-        let (socket, _) = listener.accept()?;
-        socket.set_read_timeout(Some(Duration::from_secs(20)))?;
+        let (socket, _) = accept(&listener)?;
         let mut stream = BufReader::new(socket);
         for (index, expected) in steps.iter().enumerate() {
             let mut line = String::new();
@@ -390,8 +369,20 @@ fn rejects_unavailable_state_malformed_headers_reorgs_and_disagreement() -> Resu
             rpc,
             chain,
         )?;
-        assert!(result.is_err(), "{case}");
-        assert!(!format!("{result:?}").contains("secret"));
+        let error = result
+            .err()
+            .with_context(|| format!("{case} was accepted"))?;
+        let expected = match case {
+            "unavailable" | "bad-roots" => "cannot retrieve Utreexo state",
+            "large-state" => "Utreexo leaf count exceeds supported position range",
+            "bad-header" | "wrong-header" => "cannot retrieve RPC header",
+            "reorg" => "RPC chain changed",
+            "disagreement" => "RPC and Electrum disagree",
+            "chain-behind" => "cannot retrieve Electrum header",
+            _ => bail!("unknown fixture case"),
+        };
+        assert!(error.to_string().contains(expected), "{case}: {error:#}");
+        assert!(!format!("{error:#}").contains("secret"));
     }
     Ok(())
 }
