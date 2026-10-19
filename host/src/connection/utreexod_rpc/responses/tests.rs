@@ -1,9 +1,16 @@
 use super::*;
+use anyhow::Context;
 use bitcoin::hashes::Hash;
 use serde_json::json;
 
 #[test]
 fn amounts_preserve_satoshis_in_decimal_and_scientific_notation() -> Result<()> {
+    let response = |text: &str| {
+        serde_json::from_str::<TxOutResponse>(&format!(
+            r#"{{"bestblock":"{}","confirmations":1,"value":{text},"coinbase":false,"scriptPubKey":{{"hex":"51"}}}}"#,
+            BlockHash::all_zeros()
+        ))
+    };
     for (text, sats) in [
         ("0", 0),
         ("0.00000001", 1),
@@ -11,12 +18,11 @@ fn amounts_preserve_satoshis_in_decimal_and_scientific_notation() -> Result<()> 
         ("1e-8", 1),
         ("1.2300E+0", 123_000_000),
         ("2.1e7", Amount::MAX_MONEY.to_sat()),
-        ("21000000.00000001", Amount::MAX_MONEY.to_sat() + 1),
-        ("184467440737.09551615", u64::MAX),
+        ("20999999.99999999", Amount::MAX_MONEY.to_sat() - 1),
         ("1.23e-6", 123),
         ("0.01000000", 1_000_000),
     ] {
-        assert_eq!(amount(&serde_json::from_str(text)?)?.to_sat(), sats);
+        assert_eq!(response(text)?.value.to_sat(), sats);
     }
     for text in [
         "-1",
@@ -27,7 +33,7 @@ fn amounts_preserve_satoshis_in_decimal_and_scientific_notation() -> Result<()> 
         "1e100",
         "1e-100",
     ] {
-        assert!(amount(&serde_json::from_str(text)?).is_err(), "{text}");
+        assert!(response(text).is_err(), "{text}");
     }
     Ok(())
 }

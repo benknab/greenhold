@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, bail};
+use anyhow::Result;
 use bitcoin::{Amount, BlockHash, ScriptBuf, hashes::sha256d, hex::FromHex};
 use serde::{Deserialize, Deserializer};
 
@@ -8,7 +8,7 @@ pub struct TxOutResponse {
     pub best_block: BlockHash,
     pub confirmations: u32,
     pub coinbase: bool,
-    #[serde(deserialize_with = "deserialize_amount")]
+    #[serde(with = "bitcoin::amount::serde::as_btc")]
     pub value: Amount,
     #[serde(rename = "scriptPubKey")]
     pub script_pub_key: ScriptPubKey,
@@ -17,41 +17,6 @@ pub struct TxOutResponse {
 #[derive(Debug, Deserialize)]
 pub struct ScriptPubKey {
     pub hex: ScriptBuf,
-}
-
-fn deserialize_amount<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Amount, D::Error> {
-    let number = serde_json::Number::deserialize(deserializer)?;
-    amount(&number).map_err(serde::de::Error::custom)
-}
-
-// Parse RPC decimal/scientific BTC notation without ever rounding through f64.
-fn amount(number: &serde_json::Number) -> Result<Amount> {
-    let text = number.as_str();
-    let (mantissa, exponent) = text.split_once(['e', 'E']).unwrap_or((text, "0"));
-    let (whole, fraction) = mantissa.split_once('.').unwrap_or((mantissa, ""));
-    if !whole
-        .bytes()
-        .chain(fraction.bytes())
-        .all(|byte| byte.is_ascii_digit())
-    {
-        bail!("invalid RPC coin amount");
-    }
-    let digits = format!("{whole}{fraction}").parse::<u128>()?;
-    let scale = 8i64 + i64::from(exponent.parse::<i32>()?) - i64::try_from(fraction.len())?;
-    let power = 10u128
-        .checked_pow(u32::try_from(scale.unsigned_abs())?)
-        .context("RPC coin amount exponent outside range")?;
-    let sats = if scale >= 0 {
-        digits
-            .checked_mul(power)
-            .context("RPC coin amount overflow")?
-    } else {
-        if digits % power != 0 {
-            bail!("RPC coin amount contains fractional satoshis");
-        }
-        digits / power
-    };
-    Ok(Amount::from_sat(u64::try_from(sats)?))
 }
 
 #[derive(Debug, Deserialize)]
