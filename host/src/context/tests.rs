@@ -185,7 +185,8 @@ fn rejects_unavailable_state_malformed_headers_and_reorgs() -> Result<()> {
             .err()
             .with_context(|| format!("{case} was accepted"))?;
         let expected = match case {
-            "unavailable" | "bad-roots" => "cannot retrieve Utreexo state",
+            "unavailable" => "cannot retrieve Utreexo state",
+            "bad-roots" => "Utreexo root count does not match leaf count",
             "large-state" => "Utreexo leaf count exceeds supported position range",
             "bad-header" | "wrong-header" => "cannot retrieve RPC header",
             "reorg" => "RPC chain changed",

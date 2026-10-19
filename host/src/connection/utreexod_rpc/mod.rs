@@ -85,7 +85,7 @@ impl<'a> Client<'a> {
 
     pub fn block_location(&mut self, hash: BlockHash) -> Result<BlockLocation> {
         let result: BlockLocation = self.call("getblockheader", (hash, true))?;
-        if result.hash() != hash {
+        if result.hash != hash {
             bail!("RPC block location does not match requested hash");
         }
         Ok(result)

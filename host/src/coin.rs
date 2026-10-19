@@ -1,6 +1,6 @@
 use crate::{connection::utreexod_rpc, context};
 use anyhow::{Context, Result, bail};
-use bitcoin::OutPoint;
+use bitcoin::{OutPoint, TxOut};
 use walledcity_core::{
     coin::{Coin, CoinWitness},
     context::ChainContext,
@@ -17,20 +17,23 @@ pub fn fetch(
     let output = rpc
         .tx_out(outpoint, false)?
         .context("coin is absent from the confirmed UTXO set")?;
-    let observed = rpc.block_location(output.observed_at())?;
-    let creation_height = creation_height(output.confirmations(), observed.height())?;
+    let observed = rpc.block_location(output.best_block)?;
+    let creation_height = creation_height(output.confirmations, observed.height)?;
     let creation_hash = rpc.block_hash(creation_height)?;
     let coin = Coin::new(
         outpoint,
         creation_hash,
         creation_height,
-        output.is_coinbase(),
-        output.output().clone(),
+        output.coinbase,
+        TxOut {
+            value: output.value,
+            script_pubkey: output.script_pub_key.hex,
+        },
     )?;
     let proof = rpc.prove_utxo_chain_tip_inclusion(&[outpoint]).context(
         "cannot retrieve coin membership proof; coin must be unspent and node needs a proof index",
     )?;
-    let witness = bind(coin, &proof)?;
+    let witness = bind(coin, proof)?;
     witness.verify(&context, outpoint)?;
     for (height, hash) in [
         (creation_height, creation_hash),
@@ -53,17 +56,17 @@ fn creation_height(confirmations: u32, observed_height: u32) -> Result<u32> {
         .context("RPC confirmation count exceeds observed height")
 }
 
-fn bind(coin: Coin, proof: &utreexod_rpc::ChainTipProof) -> Result<CoinWitness> {
-    let [target] = proof.targets() else {
+fn bind(coin: Coin, proof: utreexod_rpc::ChainTipProof) -> Result<CoinWitness> {
+    let [target] = proof.proof_targets.as_slice() else {
         bail!("expected one proof target");
     };
-    let [leaf] = proof.leaves() else {
+    let [leaf] = proof.hashes_proven.as_slice() else {
         bail!("expected one proven leaf");
     };
     if *leaf != coin.leaf_hash() {
         bail!("RPC proven leaf does not match reconstructed coin");
     }
-    CoinWitness::new(coin, proof.proved_at(), *target, proof.hashes().to_vec())
+    CoinWitness::new(coin, proof.proved_at_hash, *target, proof.proof_hashes)
 }
 
 #[cfg(test)]

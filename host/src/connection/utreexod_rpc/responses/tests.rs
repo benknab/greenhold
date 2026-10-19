@@ -10,6 +10,8 @@ fn amounts_preserve_satoshis_in_decimal_and_scientific_notation() -> Result<()> 
         ("1e-8", 1),
         ("1.2300E+0", 123_000_000),
         ("2.1e7", Amount::MAX_MONEY.to_sat()),
+        ("21000000.00000001", Amount::MAX_MONEY.to_sat() + 1),
+        ("184467440737.09551615", u64::MAX),
         ("1.23e-6", 123),
         ("0.01000000", 1_000_000),
     ] {
@@ -20,7 +22,7 @@ fn amounts_preserve_satoshis_in_decimal_and_scientific_notation() -> Result<()> 
         "-0.1",
         "0.000000001",
         "1e-9",
-        "21000000.00000001",
+        "184467440737.09551616",
         "1e100",
         "1e-100",
     ] {
@@ -38,8 +40,8 @@ fn tx_out_response_preserves_mempool_outputs_and_requires_complete_data() -> Res
         value["confirmations"] = json!(confirmations);
         let output: TxOutResponse = serde_json::from_value(value)?;
         assert_eq!(output.confirmations, confirmations);
-        assert_eq!(output.output.value.to_sat(), 1);
-        assert_eq!(output.output.script_pubkey.as_bytes(), &[0x51]);
+        assert_eq!(output.value.to_sat(), 1);
+        assert_eq!(output.script_pub_key.hex.as_bytes(), &[0x51]);
     }
     for field in [
         "bestblock",
@@ -59,12 +61,19 @@ fn tx_out_response_preserves_mempool_outputs_and_requires_complete_data() -> Res
         ("confirmations", json!(-1)),
         ("value", json!("1")),
         ("scriptPubKey", json!({"hex":"zz"})),
-        ("scriptPubKey", json!({"hex":"51".repeat(10001)})),
+        ("scriptPubKey", json!({"extra":true})),
     ] {
         let mut value = valid.clone();
         value[field] = replacement;
         assert!(serde_json::from_value::<TxOutResponse>(value).is_err());
     }
+    // Bitcoin amount and script limits belong to the coin domain constructor.
+    let mut value = valid;
+    value["value"] = json!(21_000_001);
+    value["scriptPubKey"]["hex"] = json!("51".repeat(10001));
+    let output: TxOutResponse = serde_json::from_value(value)?;
+    assert!(output.value > Amount::MAX_MONEY);
+    assert_eq!(output.script_pub_key.hex.len(), 10001);
     Ok(())
 }
 
@@ -76,19 +85,23 @@ fn proof_response_preserves_multiple_targets_and_decodes_display_hashes() -> Res
     let response = json!({"provedathash": BlockHash::all_zeros(), "prooftargets":[0, 1],
         "hashesproven":[display, display], "proofhashes":[display], "extra":true});
     let proof: ChainTipProof = serde_json::from_value(response.clone())?;
-    assert_eq!(proof.targets, [0, 1]);
-    assert_eq!(proof.leaves, [bytes, bytes]);
-    assert_eq!(proof.hashes, [bytes]);
+    assert_eq!(proof.proof_targets, [0, 1]);
+    assert_eq!(proof.hashes_proven, [bytes, bytes]);
+    assert_eq!(proof.proof_hashes, [bytes]);
     for (field, value) in [
-        ("prooftargets", json!([])),
         ("prooftargets", json!([-1, 0])),
-        ("hashesproven", json!([])),
         ("hashesproven", json!(["zz", display])),
         ("proofhashes", json!(["zz"])),
     ] {
         let mut invalid = response.clone();
         invalid[field] = value;
         assert!(serde_json::from_value::<ChainTipProof>(invalid).is_err());
+    }
+    // The application checks the expected target and leaf counts.
+    for field in ["prooftargets", "hashesproven"] {
+        let mut value = response.clone();
+        value[field] = json!([]);
+        let _: ChainTipProof = serde_json::from_value(value)?;
     }
     // The RPC schema does not impose our single-coin forest/path bounds.
     let _: ChainTipProof = serde_json::from_value(json!({"provedathash":BlockHash::all_zeros(),

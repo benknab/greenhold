@@ -147,6 +147,24 @@ fn retrieval_checks_coin_proof_and_final_chain_bindings() -> Result<()> {
         (
             {
                 let mut value = steps[5].2.clone();
+                value["value"] = json!(21_000_001);
+                value
+            },
+            "coin amount or script exceeds Bitcoin limits",
+            8,
+        ),
+        (
+            {
+                let mut value = steps[5].2.clone();
+                value["scriptPubKey"]["hex"] = json!("51".repeat(10001));
+                value
+            },
+            "coin amount or script exceeds Bitcoin limits",
+            8,
+        ),
+        (
+            {
+                let mut value = steps[5].2.clone();
                 value["confirmations"] = json!(22);
                 value
             },
@@ -179,10 +197,23 @@ fn single_coin_binding_enforces_domain_rules_on_rpc_data() -> Result<()> {
     let leaf = sha256d::Hash::from_byte_array(coin.leaf_hash());
     let response = json!({"provedathash":block.block_hash(),"prooftargets":[0],
         "hashesproven":[leaf],"proofhashes":[]});
-    let witness = bind(coin.clone(), &serde_json::from_value(response.clone())?)?;
+    let witness = bind(coin.clone(), serde_json::from_value(response.clone())?)?;
     assert_eq!(witness.coin(), &coin);
     for (targets, leaves, hashes, reason) in [
         (json!([]), json!([]), json!([]), "expected one proof target"),
+        (
+            json!([]),
+            json!([leaf]),
+            json!([]),
+            "expected one proof target",
+        ),
+        (json!([0]), json!([]), json!([]), "expected one proven leaf"),
+        (
+            json!([0]),
+            json!([leaf, leaf]),
+            json!([]),
+            "expected one proven leaf",
+        ),
         (
             json!([0, 1]),
             json!([leaf, leaf]),
@@ -213,7 +244,7 @@ fn single_coin_binding_enforces_domain_rules_on_rpc_data() -> Result<()> {
         invalid["hashesproven"] = leaves;
         invalid["proofhashes"] = hashes;
         let proof = serde_json::from_value(invalid)?;
-        let error = bind(coin.clone(), &proof)
+        let error = bind(coin.clone(), proof)
             .err()
             .context("invalid proof binding accepted")?;
         assert!(error.to_string().contains(reason), "{error:#}");

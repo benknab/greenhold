@@ -65,7 +65,7 @@ fn output_lookup_and_proof_request_preserve_rpc_semantics() -> Result<()> {
     let mut client = Client::new(&config);
     assert!(client.tx_out(first, true)?.is_none());
     let proof = client.prove_utxo_chain_tip_inclusion(&[first, second])?;
-    assert_eq!(proof.targets(), &[4, 5]);
+    assert_eq!(proof.proof_targets, [4, 5]);
     task.join().map_err(|_| anyhow!("RPC mock panicked"))??;
     Ok(())
 }
@@ -81,15 +81,15 @@ fn authenticated_and_anonymous_lookup_preserves_block_and_root_bytes() -> Result
         let (config, task) = serve("200 OK", replies, auth)?;
         let mut client = Client::new(&config);
         let block = client.best_block()?;
-        assert_eq!(block.hash().to_string(), BLOCK);
-        assert_eq!(block.height(), 123);
-        let roots = client.utreexo_roots(&block.hash())?;
-        assert_eq!(roots.num_leaves(), 3);
+        assert_eq!(block.hash.to_string(), BLOCK);
+        assert_eq!(block.height, 123);
+        let roots = client.utreexo_roots(&block.hash)?;
+        assert_eq!(roots.num_leaves, 3);
         let mut expected = [0; 32];
         for (byte, value) in expected.iter_mut().zip(0_u8..32) {
             *byte = value;
         }
-        assert_eq!(roots.roots(), &[expected, [0; 32]]);
+        assert_eq!(roots.roots, [expected, [0; 32]]);
         task.join().map_err(|_| anyhow!("RPC mock panicked"))??;
     }
     let config = Config::new(
@@ -150,8 +150,8 @@ fn transport_rejections_are_specific_and_redact_remote_values() -> Result<()> {
 fn best_block_requires_hash_and_unsigned_height() -> Result<()> {
     let valid = json!({"hash":BLOCK,"height":123,"extra":"ignored"});
     let block: BlockLocation = serde_json::from_value(valid)?;
-    assert_eq!(block.height(), 123);
-    assert_eq!(block.hash().to_string(), BLOCK);
+    assert_eq!(block.height, 123);
+    assert_eq!(block.hash.to_string(), BLOCK);
     for value in [
         json!({"height":123}),
         json!({"hash":BLOCK}),
@@ -172,23 +172,26 @@ fn roots_schema_checks_shape_and_preserves_full_leaf_counts() -> Result<()> {
     for roots in [json!([]), Value::Null] {
         let state: Roots =
             serde_json::from_value(json!({"numleaves":0,"roots":roots,"extra":true}))?;
-        assert_eq!(state.num_leaves(), 0);
-        assert!(state.roots().is_empty());
+        assert_eq!(state.num_leaves, 0);
+        assert!(state.roots.is_empty());
     }
     // The wire schema accepts u64; core applies its narrower accumulator bound.
     for num_leaves in [1_u64 << 63, u64::MAX] {
         let state: Roots = serde_json::from_value(
             json!({"numleaves":num_leaves,"roots":vec![BLOCK; usize::try_from(num_leaves.count_ones())?]}),
         )?;
-        assert_eq!(state.num_leaves(), num_leaves);
+        assert_eq!(state.num_leaves, num_leaves);
+    }
+    // Root-count consistency belongs to the accumulator domain constructor.
+    for roots in [Value::Null, json!([BLOCK])] {
+        let state: Roots = serde_json::from_value(json!({"numleaves":3,"roots":roots}))?;
+        assert_eq!(state.num_leaves, 3);
     }
     for value in [
         json!({"numleaves":0}),
         json!({"roots":[]}),
         json!({"numleaves":-1,"roots":[]}),
         json!({"numleaves":1.5,"roots":[BLOCK]}),
-        json!({"numleaves":1,"roots":null}),
-        json!({"numleaves":3,"roots":[BLOCK]}),
         json!({"numleaves":1,"roots":["ab".repeat(31)]}),
         json!({"numleaves":1,"roots":["zz".repeat(32)]}),
     ] {

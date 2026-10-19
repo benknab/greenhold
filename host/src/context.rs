@@ -47,9 +47,9 @@ pub fn fetch(request: Request, config: &utreexod_rpc::Config) -> Result<ChainCon
         let block = rpc
             .best_block()
             .context("cannot resolve Utreexod RPC tip")?;
-        let height = block.height();
+        let height = block.height;
         let header = rpc
-            .block_header(&block.hash())
+            .block_header(&block.hash)
             .context("cannot retrieve RPC tip header")?;
         (
             height,
@@ -81,7 +81,7 @@ pub fn fetch(request: Request, config: &utreexod_rpc::Config) -> Result<ChainCon
             last.hash()
         )
     })?;
-    let state = AccumulatorState::new(roots.num_leaves(), roots.roots().to_vec())?;
+    let state = AccumulatorState::new(roots.num_leaves, roots.roots)?;
 
     // Read the height bindings again after fetching roots. Tip advances are fine;
     // an observed reorg of either requested endpoint is not.
