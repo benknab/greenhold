@@ -36,6 +36,16 @@ fn historical_context_uses_stock_nodes_and_fails_closed() -> Result<()> {
     let tip = success(&context(&bridge, "regtest", &[])?)?;
     assert_context(&bridge, &tip, 11, 11)?;
     assert_ne!(historical["context"]["state"], tip["context"]["state"]);
+    let range = success(&context(&bridge, "regtest", &["--first-height", "3"])?)?;
+    assert_context(&bridge, &range, 3, 11)?;
+    assert_eq!(
+        success(&context(&bridge, "regtest", &["--first-height", "11"])?)?,
+        tip
+    );
+    rejection(
+        &context(&bridge, "regtest", &["--first-height", "12"])?,
+        "first height must not exceed last height",
+    );
 
     rejection(
         &context(&bridge, "bitcoin", &["6"])?,

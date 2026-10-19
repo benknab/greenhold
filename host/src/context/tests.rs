@@ -65,55 +65,31 @@ fn hash(height: u32, block: BlockHash) -> Step {
 }
 
 #[test]
-fn rpc_tip_is_pinned_and_first_height_defaults_to_it() -> Result<()> {
-    let cases = [Network::Bitcoin, Network::Signet, Network::Regtest]
-        .into_iter()
-        .flat_map(|network| [None, Some(0), Some(10), Some(11)].map(|first| (network, first)));
-    for (network, first) in cases {
+fn rpc_tip_is_resolved_once_on_each_requested_network() -> Result<()> {
+    for network in [Network::Bitcoin, Network::Signet, Network::Regtest] {
         // Synthetic height binding and roots, for retrieval behavior only.
         let header = genesis_block(network).header;
         let block = header.block_hash();
         let raw = serialize(&header).as_hex().to_string();
-        let mut rpc = vec![
+        let rpc = vec![
             hash(0, block),
             step("getbestblock", json!([]), json!({"hash":block,"height":10})),
             step("getblockheader", json!([block, false]), json!(raw)),
-        ];
-        if first == Some(0) {
-            rpc.push(hash(0, block));
-            rpc.push(step("getblockheader", json!([block, false]), json!(raw)));
-        }
-        if first != Some(11) {
-            rpc.push(step(
+            hash(0, block),
+            step("getblockheader", json!([block, false]), json!(raw)),
+            step(
                 "getutreexoroots",
                 json!([block]),
                 json!({"numleaves":0,"roots":[]}),
-            ));
-            let heights = if first == Some(0) {
-                vec![0, 10]
-            } else {
-                vec![10]
-            };
-            for height in heights {
-                rpc.push(hash(height, block));
-            }
-        }
+            ),
+            hash(0, block),
+            hash(10, block),
+        ];
         // The script permits exactly one tip query.
-        let result = run(Request::new(network, first, None)?, rpc)?;
-        if first == Some(11) {
-            assert!(
-                result
-                    .err()
-                    .context("expected height failure")?
-                    .to_string()
-                    .contains("first height")
-            );
-        } else {
-            let context = result?;
-            assert_eq!(context.last().height(), 10);
-            assert_eq!(context.last().hash(), block);
-            assert_eq!(context.first().height(), first.unwrap_or(10));
-        }
+        let context = run(Request::new(network, Some(0), None)?, rpc)??;
+        assert_eq!(context.network(), network);
+        assert_eq!(context.last().height(), 10);
+        assert_eq!(context.last().hash(), block);
     }
     Ok(())
 }
@@ -142,51 +118,6 @@ fn selected_tip_reorg_fails() -> Result<()> {
 }
 
 #[test]
-fn fixed_historical_endpoints_and_single_block_context() -> Result<()> {
-    // Real mainnet headers, synthetic roots. These establish component behavior only.
-    let genesis = genesis_block(Network::Bitcoin).header;
-    let historical: bitcoin::block::Header = bitcoin::consensus::deserialize(&[
-        0, 96, 29, 52, 85, 187, 159, 189, 150, 107, 62, 162, 220, 66, 208, 194, 39, 34, 228, 192,
-        193, 114, 159, 173, 23, 33, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 85, 8, 127, 171, 12, 143, 63,
-        137, 248, 188, 253, 77, 242, 108, 80, 77, 129, 176, 168, 142, 4, 144, 113, 97, 131, 140,
-        12, 83, 0, 26, 240, 145, 53, 237, 189, 100, 148, 56, 5, 23, 94, 149, 94, 6,
-    ])?;
-    for first in [0, 800_000] {
-        let mut rpc = vec![hash(0, genesis.block_hash())];
-        let mut endpoints = vec![(first, if first == 0 { genesis } else { historical })];
-        if first != 800_000 {
-            endpoints.push((800_000, historical));
-        }
-        for (height, header) in &endpoints {
-            rpc.push(hash(*height, header.block_hash()));
-            rpc.push(step(
-                "getblockheader",
-                json!([header.block_hash(), false]),
-                json!(serialize(header).as_hex().to_string()),
-            ));
-        }
-        rpc.push(step(
-            "getutreexoroots",
-            json!([historical.block_hash()]),
-            json!({"numleaves":3,"roots":["11".repeat(32), "22".repeat(32)]}),
-        ));
-        for (height, header) in endpoints {
-            rpc.push(hash(height, header.block_hash()));
-        }
-        let context = run(
-            Request::new(Network::Bitcoin, Some(first), Some(800_000))?,
-            rpc,
-        )??;
-        assert_eq!(context.first().height(), first);
-        assert_eq!(context.last().height(), 800_000);
-        assert_eq!(context.last().hash(), historical.block_hash());
-        assert_eq!(context.state().num_leaves(), 3);
-        assert_eq!(context.state().roots(), &[[0x11; 32], [0x22; 32]]);
-    }
-    Ok(())
-}
-
-#[test]
 fn rejects_wrong_networks_before_retrieving_state() -> Result<()> {
     for network in [Network::Bitcoin, Network::Signet, Network::Regtest] {
         let wrong = if network == Network::Bitcoin {
@@ -205,31 +136,6 @@ fn rejects_wrong_networks_before_retrieving_state() -> Result<()> {
     assert!(Request::new(Network::Bitcoin, Some(2), Some(1)).is_err());
     assert!(Request::new(Network::Testnet, None, None).is_err());
     assert!(Request::new(Network::Testnet4, None, None).is_err());
-    Ok(())
-}
-
-#[test]
-fn retrieves_context_for_each_requested_network() -> Result<()> {
-    for network in [Network::Bitcoin, Network::Signet, Network::Regtest] {
-        let header = genesis_block(network).header;
-        let genesis = header.block_hash();
-        let raw = serialize(&header).as_hex().to_string();
-        let rpc = vec![
-            hash(0, genesis),
-            hash(0, genesis),
-            step("getblockheader", json!([genesis, false]), json!(raw)),
-            step(
-                "getutreexoroots",
-                json!([genesis]),
-                json!({"numleaves":0,"roots":[]}),
-            ),
-            hash(0, genesis),
-        ];
-        let context = run(Request::new(network, None, Some(0))?, rpc)??;
-        assert_eq!(context.network(), network);
-        assert_eq!(context.first().hash(), genesis);
-        assert_eq!(context.last().hash(), genesis);
-    }
     Ok(())
 }
 
