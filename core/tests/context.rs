@@ -1,7 +1,7 @@
 use anyhow::Result;
 use bitcoin::{Network, blockdata::constants::genesis_block};
+use greenhold_core::context::{AccumulatorState, BlockEndpoint, ChainContext};
 use serde_json::json;
-use walledcity_core::context::{AccumulatorState, BlockEndpoint, ChainContext};
 
 fn block(height: u32) -> Result<BlockEndpoint> {
     // Synthetic height binding for component tests, never accepted chain state.
@@ -21,7 +21,7 @@ fn digest_vector_and_round_trip() -> Result<()> {
     )?;
     assert_eq!(
         context.digest().to_string(),
-        "57c57dffa8aaa3a7033349c053a56df38e788e806cba903153d0c19deac0f595"
+        "9b169db9427681232b086a6e9318a14c2e5b89588e44ebf31434e8f364445258"
     );
     let decoded: ChainContext = serde_json::from_slice(&serde_json::to_vec(&context)?)?;
     assert_eq!(decoded, context);

@@ -1,8 +1,8 @@
 use crate::connection::utreexod_rpc;
 use anyhow::{Context as _, Result, bail};
 use bitcoin::{BlockHash, Network, block::Header, blockdata::constants::genesis_block};
-use walledcity_core::context::{AccumulatorState, BlockEndpoint, ChainContext};
-use walledcity_core::network::SupportedNetwork;
+use greenhold_core::context::{AccumulatorState, BlockEndpoint, ChainContext};
+use greenhold_core::network::SupportedNetwork;
 
 /// Lookup heights. An omitted last height uses the selected block or the RPC tip.
 #[derive(Clone, Copy, Debug)]

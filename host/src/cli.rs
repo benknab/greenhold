@@ -1,8 +1,8 @@
 use crate::connection::utreexod_rpc;
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand};
+use greenhold_core::network::SupportedNetwork;
 use url::Url;
-use walledcity_core::network::SupportedNetwork;
 
 pub const DEFAULT_RPC: &str = "https://utreexo.hospitablealpaca.com/";
 

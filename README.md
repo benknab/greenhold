@@ -1,4 +1,4 @@
-# Walledcity
+# Greenhold
 
 An experimental Bitcoin proof-of-funds project using BIP-322 and RISC Zero.
 The goal is to prove the following claim without revealing the address or coin:
@@ -22,8 +22,8 @@ Install [rustup](https://rustup.rs/) and
 1.97.0 automatically and uses RISC Zero SDK 3.0.6.
 
 ```sh
-git clone https://github.com/benknab/walledcity.git
-cd walledcity
+git clone https://github.com/benknab/greenhold.git
+cd greenhold
 rzup install rust 1.97.0
 rzup default rust 1.97.0
 cargo run --locked --release -- context 900000
@@ -37,6 +37,6 @@ This builds the host and guest, then retrieves public chain context from live no
 ```sh
 cargo fmt --all --check
 cargo lint
-cargo test --locked --release --workspace --exclude walledcity-guest
+cargo test --locked --release --workspace --exclude greenhold-guest
 cargo build --locked --release
 ```

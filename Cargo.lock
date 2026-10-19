@@ -1527,6 +1527,54 @@ dependencies = [
 ]
 
 [[package]]
+name = "greenhold-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bitcoin",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "greenhold-guest"
+version = "0.1.0"
+dependencies = [
+ "greenhold-core",
+ "risc0-zkvm",
+]
+
+[[package]]
+name = "greenhold-guest-builder"
+version = "0.1.0"
+dependencies = [
+ "risc0-build",
+]
+
+[[package]]
+name = "greenhold-host"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "bip324",
+ "bitcoin",
+ "clap",
+ "greenhold-core",
+ "greenhold-guest-builder",
+ "risc0-zkvm",
+ "rustls",
+ "serde",
+ "serde_json",
+ "testcontainers",
+ "ureq",
+ "url",
+ "wait-timeout",
+ "webpki-roots",
+]
+
+[[package]]
 name = "h2"
 version = "0.4.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3987,54 +4035,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09ac3b126d3914f9849036f826e054cbabdc8519970b8998ddaf3b5bd3c65f11"
 dependencies = [
  "libc",
-]
-
-[[package]]
-name = "walledcity-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bitcoin",
- "serde",
- "serde_json",
- "sha2",
-]
-
-[[package]]
-name = "walledcity-guest"
-version = "0.1.0"
-dependencies = [
- "risc0-zkvm",
- "walledcity-core",
-]
-
-[[package]]
-name = "walledcity-guest-builder"
-version = "0.1.0"
-dependencies = [
- "risc0-build",
-]
-
-[[package]]
-name = "walledcity-host"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base64 0.22.1",
- "bip324",
- "bitcoin",
- "clap",
- "risc0-zkvm",
- "rustls",
- "serde",
- "serde_json",
- "testcontainers",
- "ureq",
- "url",
- "wait-timeout",
- "walledcity-core",
- "walledcity-guest-builder",
- "webpki-roots",
 ]
 
 [[package]]

@@ -90,7 +90,7 @@ fn handshake(transport: &mut impl Transport) -> Result<VersionMessage> {
         address.clone(),
         address,
         u64::try_from(now.as_nanos() & u128::from(u64::MAX))?,
-        concat!("/walledcity:", env!("CARGO_PKG_VERSION"), "/").into(),
+        concat!("/greenhold:", env!("CARGO_PKG_VERSION"), "/").into(),
         0,
     );
     transport.send(NetworkMessage::Version(version))?;

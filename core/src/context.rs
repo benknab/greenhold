@@ -190,7 +190,7 @@ impl ChainContext {
     #[must_use]
     pub fn digest(&self) -> sha256::Hash {
         let mut engine = sha256::Hash::engine();
-        engine.input(b"walledcity/chain-context/v1\0");
+        engine.input(b"greenhold/chain-context/v1\0");
         engine.input(&serialize(&genesis_block(self.network()).block_hash()));
         for block in [&self.first, &self.last] {
             engine.input(&block.height.to_le_bytes());

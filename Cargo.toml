@@ -13,8 +13,8 @@ publish = false
 anyhow = "1"
 bitcoin = { version = "0.32", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
-walledcity-core = { path = "core" }
-walledcity-guest-builder = { path = "guest-builder" }
+greenhold-core = { path = "core" }
+greenhold-guest-builder = { path = "guest-builder" }
 risc0-build = "=3.0.6"
 risc0-zkvm = { version = "=3.0.6", default-features = false }
 

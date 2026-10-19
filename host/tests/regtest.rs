@@ -94,7 +94,7 @@ fn assert_context(node: &Node, report: &Value, first: u32, last: u32) -> Result<
     // Do not call ChainContext::digest or the production RPC client as the oracle.
     let genesis = node.rpc("getblockhash", &json!([0]))?;
     let genesis: BlockHash = genesis.as_str().context("missing genesis hash")?.parse()?;
-    let mut preimage = b"walledcity/chain-context/v1\0".to_vec();
+    let mut preimage = b"greenhold/chain-context/v1\0".to_vec();
     preimage.extend(genesis.to_byte_array());
     for (height, hash) in [(first, first_hash), (last, last_hash)] {
         let header = node.rpc("getblockheader", &json!([hash, false]))?;

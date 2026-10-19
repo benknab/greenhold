@@ -3,7 +3,7 @@ use std::process::Command;
 
 #[test]
 fn coin_cli_requires_an_outpoint_and_explains_tip_only_proofs() -> Result<()> {
-    let binary = env!("CARGO_BIN_EXE_walledcity-host");
+    let binary = env!("CARGO_BIN_EXE_greenhold-host");
     let help = Command::new(binary).args(["coin", "--help"]).output()?;
     assert!(help.status.success());
     let help = String::from_utf8(help.stdout)?;

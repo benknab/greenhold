@@ -1,5 +1,5 @@
 [package]
-name = "walledcity-guest"
+name = "greenhold-guest"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,11 +9,11 @@ publish.workspace = true
 workspace = true
 
 [[bin]]
-name = "walledcity-guest"
+name = "greenhold-guest"
 path = "src/main.rs"
 test = false
 bench = false
 
 [dependencies]
-walledcity-core.workspace = true
+greenhold-core.workspace = true
 risc0-zkvm = { workspace = true, features = ["std"] }

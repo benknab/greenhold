@@ -7,8 +7,8 @@ use bitcoin::{
     hex::{DisplayHex, FromHex},
     transaction::Version,
 };
+use greenhold_core::{coin::CoinWitness, context::ChainContext};
 use serde_json::{Value, json};
-use walledcity_core::{coin::CoinWitness, context::ChainContext};
 
 fn spend(outpoint: OutPoint, values: &[u64], script: &ScriptBuf) -> Transaction {
     Transaction {

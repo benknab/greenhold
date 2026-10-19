@@ -1,7 +1,7 @@
 use crate::{connection::utreexod_rpc, context};
 use anyhow::{Context, Result, bail};
 use bitcoin::{OutPoint, TxOut, hashes::Hash};
-use walledcity_core::{
+use greenhold_core::{
     coin::{Coin, CoinWitness},
     context::ChainContext,
 };

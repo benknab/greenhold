@@ -16,7 +16,7 @@ pub const MINING_ADDRESS: &str = "bcrt1qusgerygumpd0ztn735s5pypq6wsv2zzhuc4yak";
 
 pub fn image() -> Result<GenericImage> {
     Ok(
-        GenericBuildableImage::new("walledcity-utreexod-test", "0.6.0")
+        GenericBuildableImage::new("greenhold-utreexod-test", "0.6.0")
             .with_dockerfile_string(include_str!("Dockerfile"))
             .with_data(include_str!("entrypoint.sh"), "entrypoint.sh")
             .build_image()?
@@ -119,7 +119,7 @@ pub fn context(rpc: &Node, network: &str, heights: &[&str]) -> Result<Output> {
 }
 
 pub fn command(rpc: &Node, network: &str, command: &str, args: &[&str]) -> Result<Output> {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_walledcity-host"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_greenhold-host"))
         .args([
             command,
             "--network",

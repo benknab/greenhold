@@ -1,5 +1,5 @@
 [package]
-name = "walledcity-host"
+name = "greenhold-host"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -20,8 +20,8 @@ serde_json = { version = "1", features = ["raw_value"] }
 ureq = { version = "3", default-features = false, features = ["rustls"] }
 url = "2"
 webpki-roots = "1"
-walledcity-core.workspace = true
-walledcity-guest-builder.workspace = true
+greenhold-core.workspace = true
+greenhold-guest-builder.workspace = true
 risc0-zkvm = { workspace = true, features = ["client", "disable-dev-mode"] }
 
 [dev-dependencies]
