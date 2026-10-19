@@ -30,8 +30,8 @@ pub struct ContextOptions {
     #[arg(long, default_value = "bitcoin")]
     pub network: SupportedNetwork,
 
-    /// Fixed last block height T. State is fetched at this block.
-    pub last_height: u32,
+    /// Last block height T. Defaults to the Utreexod RPC tip, resolved once.
+    pub last_height: Option<u32>,
 
     /// First block height X. Defaults to T for a single-block context.
     #[arg(long, value_name = "HEIGHT")]
@@ -162,6 +162,23 @@ mod tests {
         assert_eq!(Network::from(options.network), Network::Bitcoin);
         for name in ["mainnet", "testnet", "testnet4", "unknown"] {
             assert!(Cli::try_parse_from(["host", "context", "100", "--network", name]).is_err());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn optional_context_heights() -> Result<()> {
+        let options = parse_context(["host", "context"])?;
+        assert_eq!(options.last_height, None);
+        assert_eq!(options.first_height, None);
+        let options = parse_context(["host", "context", "--first-height", "100"])?;
+        assert_eq!(options.last_height, None);
+        assert_eq!(options.first_height, Some(100));
+        let options = parse_context(["host", "context", "200"])?;
+        assert_eq!(options.last_height, Some(200));
+        assert_eq!(options.first_height, None);
+        for height in ["-1", "4294967296", "abc"] {
+            assert!(Cli::try_parse_from(["host", "context", height]).is_err());
         }
         Ok(())
     }

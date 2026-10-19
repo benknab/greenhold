@@ -90,6 +90,23 @@ pub struct Client<'a> {
     id: u64,
 }
 
+/// Hash and height from one RPC best-chain snapshot.
+#[derive(Debug, Deserialize)]
+pub struct BlockLocation {
+    hash: BlockHash,
+    height: u32,
+}
+
+impl BlockLocation {
+    pub fn hash(&self) -> BlockHash {
+        self.hash
+    }
+
+    pub fn height(&self) -> u32 {
+        self.height
+    }
+}
+
 impl<'a> Client<'a> {
     pub fn new(config: &'a Config) -> Self {
         Self {
@@ -104,15 +121,8 @@ impl<'a> Client<'a> {
         }
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "tip lookup is retained and tested for future coin discovery"
-        )
-    )]
-    pub fn best_block_hash(&mut self) -> Result<BlockHash> {
-        self.call("getbestblockhash", [] as [(); 0])
+    pub fn best_block(&mut self) -> Result<BlockLocation> {
+        self.call("getbestblock", [] as [(); 0])
     }
 
     pub fn block_hash(&mut self, height: u32) -> Result<BlockHash> {
@@ -214,7 +224,7 @@ mod tests {
         serve_responses(
             status,
             vec![(
-                json!({"jsonrpc":"1.0","id":1,"method":"getbestblockhash","params":[]}),
+                json!({"jsonrpc":"1.0","id":1,"method":"getbestblock","params":[]}),
                 body,
             )],
             auth,
@@ -263,12 +273,14 @@ mod tests {
         for auth in [false, true] {
             let (url, task) = serve(
                 "200 OK",
-                json!({"id":1,"result":BLOCK,"error":null}).to_string(),
+                json!({"id":1,"result":{"hash":BLOCK,"height":123},"error":null}).to_string(),
                 auth,
             )?;
             let credentials = auth.then(|| ("user".into(), "pass".into()));
             let config = Config::new(url, credentials);
-            assert_eq!(Client::new(&config).best_block_hash()?.to_string(), BLOCK);
+            let block = Client::new(&config).best_block()?;
+            assert_eq!(block.hash().to_string(), BLOCK);
+            assert_eq!(block.height(), 123);
             task.join().map_err(|_| anyhow!("mock server panicked"))??;
         }
         Ok(())
@@ -289,7 +301,10 @@ mod tests {
         for (status, body) in [
             ("302 Found", "secret".into()),
             ("401 Unauthorized", "secret".into()),
-            ("200 OK", json!({"id":2,"result":BLOCK}).to_string()),
+            (
+                "200 OK",
+                json!({"id":2,"result":{"hash":BLOCK,"height":123}}).to_string(),
+            ),
             (
                 "200 OK",
                 json!({"id":1,"error":{"message":"secret"}}).to_string(),
@@ -299,7 +314,7 @@ mod tests {
         ] {
             let (url, task) = serve(status, body, false)?;
             let config = Config::new(url, None);
-            let response = Client::new(&config).best_block_hash();
+            let response = Client::new(&config).best_block();
             assert!(response.is_err());
             assert!(!format!("{response:?}").contains("secret"));
             if status != "200 OK" {
@@ -320,16 +335,16 @@ mod tests {
     #[test]
     fn roots_lookup_uses_parsed_block_and_preserves_root_bytes() -> Result<()> {
         let responses = vec![
-            (json!({"jsonrpc":"1.0","id":1,"method":"getbestblockhash","params":[]}),
-             json!({"id":1,"result":BLOCK,"error":null}).to_string()),
+            (json!({"jsonrpc":"1.0","id":1,"method":"getbestblock","params":[]}),
+             json!({"id":1,"result":{"hash":BLOCK,"height":123},"error":null}).to_string()),
             (json!({"jsonrpc":"1.0","id":2,"method":"getutreexoroots","params":[BLOCK]}),
              json!({"id":2,"result":{"numleaves":3,"roots":[BLOCK,"00".repeat(32)]},"error":null}).to_string()),
         ];
         let (url, task) = serve_responses("200 OK", responses, false)?;
         let config = Config::new(url, None);
         let mut client = Client::new(&config);
-        let block = client.best_block_hash()?;
-        let roots = client.utreexo_roots(&block)?;
+        let block = client.best_block()?;
+        let roots = client.utreexo_roots(&block.hash())?;
         assert_eq!(roots.num_leaves(), 3);
         let mut expected = [0; 32];
         for (byte, value) in expected.iter_mut().zip(0_u8..32) {
@@ -341,15 +356,16 @@ mod tests {
     }
 
     #[test]
-    fn rejects_malformed_block_hash_responses() -> Result<()> {
+    fn rejects_malformed_best_block_responses() -> Result<()> {
         for value in [
             Value::Null,
             json!(7),
             json!({"hash":BLOCK}),
             json!("secret"),
-            json!("ab".repeat(31)),
-            json!("ab".repeat(33)),
-            json!("zz".repeat(32)),
+            json!({"hash":"ab".repeat(31),"height":123}),
+            json!({"hash":"ab".repeat(33),"height":123}),
+            json!({"hash":"zz".repeat(32),"height":123}),
+            json!({"hash":null,"height":123}),
         ] {
             let (url, task) = serve(
                 "200 OK",
@@ -358,10 +374,38 @@ mod tests {
             )?;
             let config = Config::new(url, None);
             let error = Client::new(&config)
-                .best_block_hash()
+                .best_block()
                 .err()
-                .context("expected invalid block hash")?;
+                .context("expected invalid best block")?;
             assert_eq!(format!("{error:#}"), "invalid JSON-RPC result");
+            task.join().map_err(|_| anyhow!("mock server panicked"))??;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn best_block_requires_hash_and_unsigned_height() -> Result<()> {
+        for (value, expected) in [
+            (
+                json!({"hash":BLOCK,"height":123,"extra":"ignored"}),
+                Some(123),
+            ),
+            (json!({"hash":BLOCK,"height":0}), Some(0)),
+            (json!({"height":123}), None),
+            (json!({"hash":BLOCK}), None),
+            (json!({"hash":BLOCK,"height":-1}), None),
+            (json!({"hash":BLOCK,"height":4_294_967_296_u64}), None),
+            (json!({"hash":BLOCK,"height":1.5}), None),
+            (json!({"hash":BLOCK,"height":"123"}), None),
+            (Value::Null, None),
+        ] {
+            let (url, task) = serve("200 OK", json!({"id":1,"result":value}).to_string(), false)?;
+            let config = Config::new(url, None);
+            let result = Client::new(&config).best_block();
+            assert_eq!(result.as_ref().ok().map(BlockLocation::height), expected);
+            if let Ok(block) = result {
+                assert_eq!(block.hash().to_string(), BLOCK);
+            }
             task.join().map_err(|_| anyhow!("mock server panicked"))??;
         }
         Ok(())

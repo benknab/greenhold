@@ -4,17 +4,19 @@ use bitcoin::{Network, blockdata::constants::genesis_block};
 use walledcity_core::context::{AccumulatorState, BlockEndpoint, ChainContext};
 use walledcity_core::network::SupportedNetwork;
 
-/// A fixed pair of lookup heights, never an implicit moving tip.
+/// Lookup heights. An omitted last height selects the RPC tip once during retrieval.
 #[derive(Clone, Copy, Debug)]
 pub struct Request {
     network: SupportedNetwork,
-    first: u32,
-    last: u32,
+    first: Option<u32>,
+    last: Option<u32>,
 }
 
 impl Request {
-    pub fn new(network: Network, first: u32, last: u32) -> Result<Self> {
-        if first > last {
+    pub fn new(network: Network, first: Option<u32>, last: Option<u32>) -> Result<Self> {
+        if let (Some(first), Some(last)) = (first, last)
+            && first > last
+        {
             bail!("first height must not exceed last height");
         }
         Ok(Self {
@@ -50,11 +52,40 @@ pub fn fetch(
         );
     }
 
-    let first = endpoint_block(&mut rpc, request.network.into(), request.first)?;
-    let last = if request.first == request.last {
-        first.clone()
+    // Pin the tip's hash and height from one RPC snapshot. Never replace it with a
+    // later tip or Electrum's tip while retrieving this context.
+    let (last_height, tip) = if let Some(height) = request.last {
+        (height, None)
     } else {
-        endpoint_block(&mut rpc, request.network.into(), request.last)?
+        let block = rpc
+            .best_block()
+            .context("cannot resolve Utreexod RPC tip")?;
+        let height = block.height();
+        let header = rpc
+            .block_header(&block.hash())
+            .context("cannot retrieve RPC tip header")?;
+        (
+            height,
+            Some(BlockEndpoint::new(request.network.into(), height, header)?),
+        )
+    };
+    let first_height = request.first.unwrap_or(last_height);
+    if first_height > last_height {
+        bail!("first height must not exceed last height");
+    }
+    let first = if let Some(tip) = &tip
+        && first_height == last_height
+    {
+        tip.clone()
+    } else {
+        endpoint_block(&mut rpc, request.network.into(), first_height)?
+    };
+    let last = if first_height == last_height {
+        first.clone()
+    } else if let Some(tip) = tip {
+        tip
+    } else {
+        endpoint_block(&mut rpc, request.network.into(), last_height)?
     };
     let roots = rpc.utreexo_roots(&last.hash()).with_context(|| {
         format!(
@@ -68,7 +99,7 @@ pub fn fetch(
     // Read the height bindings again after fetching roots. Tip advances are fine;
     // an observed reorg of either requested endpoint is not.
     crosscheck(&mut rpc, &mut chain, &first)?;
-    if request.first != request.last {
+    if first.height() != last.height() {
         crosscheck(&mut rpc, &mut chain, &last)?;
     }
     ChainContext::new(first, last, state)

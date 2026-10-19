@@ -123,6 +123,99 @@ fn chain_network(block: BlockHash) -> Step {
 }
 
 #[test]
+fn rpc_tip_is_pinned_and_first_height_defaults_to_it() -> Result<()> {
+    let cases = [Network::Bitcoin, Network::Signet, Network::Regtest]
+        .into_iter()
+        .flat_map(|network| [None, Some(0), Some(10), Some(11)].map(|first| (network, first)));
+    for (network, first) in cases {
+        // Synthetic height binding and roots, for retrieval behavior only.
+        let header = genesis_block(network).header;
+        let block = header.block_hash();
+        let raw = serialize(&header).as_hex().to_string();
+        let mut rpc = vec![
+            hash(0, block),
+            step("getbestblock", json!([]), json!({"hash":block,"height":10})),
+            step("getblockheader", json!([block, false]), json!(raw)),
+        ];
+        let mut chain = vec![version(), chain_network(block)];
+        if first == Some(0) {
+            rpc.push(hash(0, block));
+            rpc.push(step("getblockheader", json!([block, false]), json!(raw)));
+        }
+        if first != Some(11) {
+            rpc.push(step(
+                "getutreexoroots",
+                json!([block]),
+                json!({"numleaves":0,"roots":[]}),
+            ));
+            let heights = if first == Some(0) {
+                vec![0, 10]
+            } else {
+                vec![10]
+            };
+            for height in heights {
+                rpc.push(hash(height, block));
+                chain.push(step("blockchain.block.header", json!([height]), json!(raw)));
+            }
+        }
+        // The script permits exactly one tip query and no Electrum tip query.
+        let result = run(Request::new(network, first, None)?, rpc, chain)?;
+        if first == Some(11) {
+            assert!(
+                result
+                    .err()
+                    .context("expected height failure")?
+                    .to_string()
+                    .contains("first height")
+            );
+        } else {
+            let context = result?;
+            assert_eq!(context.last().height(), 10);
+            assert_eq!(context.last().hash(), block);
+            assert_eq!(context.first().height(), first.unwrap_or(10));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn selected_tip_reorg_and_electrum_lag_fail() -> Result<()> {
+    let header = genesis_block(Network::Bitcoin).header;
+    let block = header.block_hash();
+    let raw = serialize(&header).as_hex().to_string();
+    for reorg in [false, true] {
+        let rpc = vec![
+            hash(0, block),
+            step("getbestblock", json!([]), json!({"hash":block,"height":0})),
+            step("getblockheader", json!([block, false]), json!(raw)),
+            step(
+                "getutreexoroots",
+                json!([block]),
+                json!({"numleaves":0,"roots":[]}),
+            ),
+            hash(0, if reorg { BlockHash::all_zeros() } else { block }),
+        ];
+        let mut chain = vec![version(), chain_network(block)];
+        if !reorg {
+            chain.push((
+                "blockchain.block.header",
+                json!([0]),
+                json!({"error":{"code":-1,"message":"height unavailable"}}),
+            ));
+        }
+        let error = run(Request::new(Network::Bitcoin, None, None)?, rpc, chain)?
+            .err()
+            .context("expected retrieval failure")?;
+        assert!(error.to_string().contains(if reorg {
+            "RPC chain changed"
+        } else {
+            "cannot retrieve Electrum header"
+        }));
+    }
+    Ok(())
+}
+
+#[test]
 fn fixed_historical_endpoints_and_single_block_context() -> Result<()> {
     // Real mainnet headers, synthetic roots. These establish component behavior only.
     let genesis = genesis_block(Network::Bitcoin).header;
@@ -160,7 +253,11 @@ fn fixed_historical_endpoints_and_single_block_context() -> Result<()> {
                 json!(serialize(&header).as_hex().to_string()),
             ));
         }
-        let context = run(Request::new(Network::Bitcoin, first, 800_000)?, rpc, chain)??;
+        let context = run(
+            Request::new(Network::Bitcoin, Some(first), Some(800_000))?,
+            rpc,
+            chain,
+        )??;
         assert_eq!(context.first().height(), first);
         assert_eq!(context.last().height(), 800_000);
         assert_eq!(context.last().hash(), historical.block_hash());
@@ -183,15 +280,19 @@ fn rejects_wrong_networks_before_retrieving_state() -> Result<()> {
             (wrong, vec![version()]),
             (genesis, vec![version(), chain_network(wrong)]),
         ] {
-            let error = run(Request::new(network, 0, 0)?, vec![hash(0, rpc_hash)], chain)?
-                .err()
-                .context("expected network failure")?;
+            let error = run(
+                Request::new(network, Some(0), Some(0))?,
+                vec![hash(0, rpc_hash)],
+                chain,
+            )?
+            .err()
+            .context("expected network failure")?;
             assert!(error.to_string().contains("not on the requested network"));
         }
     }
-    assert!(Request::new(Network::Bitcoin, 2, 1).is_err());
-    assert!(Request::new(Network::Testnet, 0, 0).is_err());
-    assert!(Request::new(Network::Testnet4, 0, 0).is_err());
+    assert!(Request::new(Network::Bitcoin, Some(2), Some(1)).is_err());
+    assert!(Request::new(Network::Testnet, None, None).is_err());
+    assert!(Request::new(Network::Testnet4, None, None).is_err());
     Ok(())
 }
 
@@ -217,7 +318,7 @@ fn retrieves_context_for_each_requested_network() -> Result<()> {
             chain_network(genesis),
             step("blockchain.block.header", json!([0]), json!(raw)),
         ];
-        let context = run(Request::new(network, 0, 0)?, rpc, chain)??;
+        let context = run(Request::new(network, None, Some(0))?, rpc, chain)??;
         assert_eq!(context.network(), network);
         assert_eq!(context.first().hash(), genesis);
         assert_eq!(context.last().hash(), genesis);
@@ -284,7 +385,11 @@ fn rejects_unavailable_state_malformed_headers_reorgs_and_disagreement() -> Resu
             };
             chain.push(("blockchain.block.header", json!([0]), reply));
         }
-        let result = run(Request::new(Network::Bitcoin, 0, 0)?, rpc, chain)?;
+        let result = run(
+            Request::new(Network::Bitcoin, Some(0), Some(0))?,
+            rpc,
+            chain,
+        )?;
         assert!(result.is_err(), "{case}");
         assert!(!format!("{result:?}").contains("secret"));
     }

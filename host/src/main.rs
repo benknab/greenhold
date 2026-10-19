@@ -21,7 +21,7 @@ fn run(cli: cli::Cli) -> Result<()> {
         cli::Command::Context(options) => {
             let request = context::Request::new(
                 options.network.into(),
-                options.first_height.unwrap_or(options.last_height),
+                options.first_height,
                 options.last_height,
             )?;
             let rpc = options.connections.rpc_config()?;
