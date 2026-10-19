@@ -1,5 +1,5 @@
 //! Public Bitcoin chain context. Parsing establishes structure, not chain acceptance.
-//! A verifier must retrieve these values from its own chosen stock nodes.
+//! A verifier must retrieve these values from its own chosen nodes.
 
 use crate::network::SupportedNetwork;
 use anyhow::{Result, bail};

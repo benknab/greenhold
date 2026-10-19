@@ -38,7 +38,7 @@ fn broadcast(node: &Node, transaction: &Transaction) -> Result<()> {
 }
 
 #[test]
-#[ignore = "requires Docker; runs stock Utreexod nodes"]
+#[ignore = "requires Docker; runs Utreexod nodes"]
 fn single_coin_membership_uses_real_transactions_and_rejects_spent_coins() -> Result<()> {
     let script = ScriptBuf::from_bytes(vec![0x51]);
     let address = Address::p2wsh(&script, Network::Regtest);
@@ -51,7 +51,7 @@ fn single_coin_membership_uses_real_transactions_and_rejects_spent_coins() -> Re
         ],
         None,
     )?;
-    // Three stock regtest versionbits windows activate SegWit and mature the coinbase.
+    // Three regtest versionbits windows activate SegWit and mature the coinbase.
     node.rpc("generate", &json!([432]))?;
     let hash = node.rpc("getblockhash", &json!([1]))?;
     let raw = node.rpc("getblock", &json!([hash, 0]))?;

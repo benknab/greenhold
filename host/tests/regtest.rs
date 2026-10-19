@@ -13,8 +13,8 @@ use support::{MINING_ADDRESS, Node, context, image, rejection, success};
 
 // Run explicitly with `cargo regtest`. Missing Docker is a failure, never a skip.
 #[test]
-#[ignore = "requires Docker; runs stock Utreexod nodes"]
-fn historical_context_uses_stock_nodes_and_fails_closed() -> Result<()> {
+#[ignore = "requires Docker; runs Utreexod nodes"]
+fn historical_context_uses_nodes_and_fails_closed() -> Result<()> {
     let image = image()?;
     let bridge = Node::start(
         image.clone(),
@@ -90,7 +90,7 @@ fn assert_context(node: &Node, report: &Value, first: u32, last: u32) -> Result<
         .collect::<Result<_>>()?;
     assert_eq!(report["context"]["state"]["roots"], json!(roots));
 
-    // Independent encoding of the public commitment rules from raw stock-node data.
+    // Independent encoding of the public commitment rules from raw node data.
     // Do not call ChainContext::digest or the production RPC client as the oracle.
     let genesis = node.rpc("getblockhash", &json!([0]))?;
     let genesis: BlockHash = genesis.as_str().context("missing genesis hash")?.parse()?;

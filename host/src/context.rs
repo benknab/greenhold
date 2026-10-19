@@ -27,7 +27,7 @@ impl Request {
     }
 }
 
-/// Retrieve public state from the caller's chosen stock Utreexod node on this run.
+/// Retrieve public state from the caller's chosen Utreexod node on this run.
 /// The RPC node supplies headers, height bindings, and roots at the last block.
 /// This function never accepts a saved context as authority.
 pub fn fetch(request: Request, config: &utreexod_rpc::Config) -> Result<ChainContext> {

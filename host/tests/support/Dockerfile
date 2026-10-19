@@ -1,7 +1,7 @@
 FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl socat \
     && rm -rf /var/lib/apt/lists/*
-# Stock Utreexod v0.6.0 release archives. No local binaries or chain snapshots.
+# Utreexod v0.6.0 release archives. No local binaries or chain snapshots.
 RUN set -eu; arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
       amd64) sha=815a66bf8ff53aaa9cdd1d6ed39bf6a305ff644a784f56fe88dc3d599e292383 ;; \

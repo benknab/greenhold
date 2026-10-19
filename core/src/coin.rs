@@ -6,7 +6,7 @@ use bitcoin::{Amount, BlockHash, OutPoint, TxOut, consensus::serialize, hashes::
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha512, Sha512_256};
 
-/// Data committed by a stock Utreexod `UtreexoV1` leaf.
+/// Data committed by a Utreexod `UtreexoV1` leaf.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "CoinFields")]
 pub struct Coin {
@@ -58,7 +58,7 @@ impl Coin {
         &self.output
     }
 
-    /// Tagged SHA-512/256 over stock-node leaf serialization, using raw hash bytes.
+    /// Tagged SHA-512/256 over node leaf serialization, using raw hash bytes.
     #[must_use]
     pub fn leaf_hash(&self) -> [u8; 32] {
         let tag = Sha512::digest(b"UtreexoV1");
@@ -86,7 +86,7 @@ impl TryFrom<CoinFields> for Coin {
     }
 }
 
-/// One leaf and its path at one exact block. Targets use stock-node 63-row positions.
+/// One leaf and its path at one exact block. Targets use node 63-row positions.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(try_from = "WitnessFields")]
 pub struct CoinWitness {

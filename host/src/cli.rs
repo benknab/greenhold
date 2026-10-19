@@ -21,7 +21,7 @@ pub struct Cli {
 pub enum Command {
     /// Fetch headers and historical Utreexo state from the chosen Utreexod RPC node.
     Context(ContextOptions),
-    /// Fetch and verify one coin against an exact context (stock proofs are tip-only).
+    /// Fetch and verify one coin against an exact context (node proofs are tip-only).
     Coin(CoinOptions),
 }
 
