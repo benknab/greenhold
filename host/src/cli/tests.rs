@@ -2,7 +2,9 @@ use super::*;
 use bitcoin::Network;
 
 fn parse(args: &[&str]) -> Result<ContextOptions> {
-    let Command::Context(options) = Cli::try_parse_from(args)?.command;
+    let Command::Context(options) = Cli::try_parse_from(args)?.command else {
+        bail!("expected context command");
+    };
     Ok(options)
 }
 

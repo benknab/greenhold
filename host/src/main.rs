@@ -1,4 +1,5 @@
 mod cli;
+mod coin;
 mod connection;
 mod context;
 
@@ -21,6 +22,27 @@ fn main() -> ExitCode {
 
 fn run(cli: cli::Cli) -> Result<()> {
     match cli.command {
+        cli::Command::Coin(options) => {
+            let request = context::Request::new(
+                options.context.network.into(),
+                options.context.first_height,
+                options.context.last_height,
+            )?;
+            let rpc = options.context.connections.rpc_config()?;
+            let (context, witness) = coin::fetch(options.outpoint, request, &rpc)?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "network": context.network(),
+                    "context_digest": context.digest(),
+                    "context": context,
+                    "witness": witness,
+                    "amount_sats": witness.coin().output().value.to_sat(),
+                    "address": bitcoin::Address::from_script(&witness.coin().output().script_pubkey,
+                        context.network()).ok().map(|address| address.to_string()),
+                }))?
+            );
+        }
         cli::Command::Context(options) => {
             let request = context::Request::new(
                 options.network.into(),

@@ -11,6 +11,8 @@ use std::{fmt, io::Read};
 use ureq::{Agent, http::HeaderValue};
 use url::Url;
 
+mod coin;
+
 pub struct Config {
     url: Url,
     credentials: Option<(String, String)>,

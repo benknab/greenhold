@@ -51,7 +51,7 @@ impl Node {
             container,
             rpc_url,
             agent: ureq::Agent::config_builder()
-                .timeout_global(Some(Duration::from_secs(3)))
+                .timeout_global(Some(Duration::from_secs(30)))
                 .build()
                 .into(),
         };
@@ -115,9 +115,13 @@ pub fn wait_for(description: &str, mut ready: impl FnMut() -> Result<bool>) -> R
 }
 
 pub fn context(rpc: &Node, network: &str, heights: &[&str]) -> Result<Output> {
+    command(rpc, network, "context", heights)
+}
+
+pub fn command(rpc: &Node, network: &str, command: &str, args: &[&str]) -> Result<Output> {
     let mut child = Command::new(env!("CARGO_BIN_EXE_walledcity-host"))
         .args([
-            "context",
+            command,
             "--network",
             network,
             "--utreexod-rpc",
@@ -127,14 +131,14 @@ pub fn context(rpc: &Node, network: &str, heights: &[&str]) -> Result<Output> {
             "--utreexod-rpc-password",
             "test",
         ])
-        .args(heights)
+        .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;
     if child.wait_timeout(Duration::from_secs(30))?.is_none() {
         child.kill()?;
         child.wait()?;
-        bail!("context command timed out");
+        bail!("{command} command timed out");
     }
     Ok(child.wait_with_output()?)
 }

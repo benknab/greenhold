@@ -1,3 +1,5 @@
+#[path = "regtest/coin.rs"]
+mod coin;
 mod support;
 
 use anyhow::{Context, Result};

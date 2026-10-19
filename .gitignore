@@ -1,5 +1,6 @@
 /target/
 /artifacts/
+/data/
 /mutants.out*/
 AGENTS.md
 .DS_Store
