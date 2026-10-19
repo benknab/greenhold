@@ -1,15 +1,12 @@
-use super::Client;
 use anyhow::{Context, Result, bail};
-use bitcoin::{Amount, BlockHash, OutPoint, ScriptBuf, TxOut, hashes::Hash, hex::FromHex};
-use serde::Deserialize;
-use std::num::NonZeroU32;
-use walledcity_core::coin::{Coin, CoinWitness};
+use bitcoin::{Amount, BlockHash, ScriptBuf, TxOut, hashes::Hash, hex::FromHex};
+use serde::{Deserialize, Deserializer};
 
 #[derive(Debug, Deserialize)]
 #[serde(try_from = "OutputFields")]
-pub struct UnspentOutput {
+pub struct TxOutResponse {
     observed_at: BlockHash,
-    confirmations: NonZeroU32,
+    confirmations: u32,
     coinbase: bool,
     output: TxOut,
 }
@@ -22,14 +19,14 @@ struct ScriptFields {
 #[derive(Deserialize)]
 struct OutputFields {
     bestblock: BlockHash,
-    confirmations: NonZeroU32,
+    confirmations: u32,
     value: serde_json::Number,
     coinbase: bool,
     #[serde(rename = "scriptPubKey")]
     script: ScriptFields,
 }
 
-impl TryFrom<OutputFields> for UnspentOutput {
+impl TryFrom<OutputFields> for TxOutResponse {
     type Error = anyhow::Error;
     fn try_from(fields: OutputFields) -> Result<Self> {
         let script_pubkey = ScriptBuf::from_bytes(Vec::<u8>::from_hex(&fields.script.hex)?);
@@ -48,19 +45,21 @@ impl TryFrom<OutputFields> for UnspentOutput {
     }
 }
 
-impl UnspentOutput {
+impl TxOutResponse {
     pub fn observed_at(&self) -> BlockHash {
         self.observed_at
     }
 
-    pub fn creation_height(&self, observed_height: u32) -> Result<u32> {
-        observed_height
-            .checked_sub(self.confirmations.get() - 1)
-            .context("RPC confirmation count exceeds observed height")
+    pub fn confirmations(&self) -> u32 {
+        self.confirmations
     }
 
-    pub fn into_coin(self, outpoint: OutPoint, hash: BlockHash, height: u32) -> Result<Coin> {
-        Coin::new(outpoint, hash, height, self.coinbase, self.output)
+    pub fn is_coinbase(&self) -> bool {
+        self.coinbase
+    }
+
+    pub fn output(&self) -> &TxOut {
+        &self.output
     }
 }
 
@@ -99,10 +98,10 @@ fn amount(number: &serde_json::Number) -> Result<Amount> {
 
 #[derive(Debug, Deserialize)]
 #[serde(try_from = "ProofFields")]
-pub struct InclusionProof {
+pub struct ChainTipProof {
     proved_at: BlockHash,
-    target: u64,
-    leaf: [u8; 32],
+    targets: Vec<u64>,
+    leaves: Vec<[u8; 32]>,
     hashes: Vec<[u8; 32]>,
 }
 
@@ -115,24 +114,20 @@ struct ProofFields {
     hashesproven: Vec<bitcoin::hashes::sha256d::Hash>,
 }
 
-impl TryFrom<ProofFields> for InclusionProof {
+impl TryFrom<ProofFields> for ChainTipProof {
     type Error = anyhow::Error;
     fn try_from(fields: ProofFields) -> Result<Self> {
-        let [target]: [u64; 1] = fields
-            .prooftargets
-            .try_into()
-            .map_err(|_| anyhow::anyhow!("expected one proof target"))?;
-        let [leaf]: [bitcoin::hashes::sha256d::Hash; 1] = fields
-            .hashesproven
-            .try_into()
-            .map_err(|_| anyhow::anyhow!("expected one proven leaf"))?;
-        if target.leading_ones() > 61 || fields.proofhashes.len() > 61 {
-            bail!("RPC membership path exceeds supported forest range");
+        if fields.prooftargets.len() != fields.hashesproven.len() {
+            bail!("RPC proof target and leaf counts differ");
         }
         Ok(Self {
             proved_at: fields.provedathash,
-            target,
-            leaf: leaf.to_byte_array(),
+            targets: fields.prooftargets,
+            leaves: fields
+                .hashesproven
+                .into_iter()
+                .map(Hash::to_byte_array)
+                .collect(),
             hashes: fields
                 .proofhashes
                 .into_iter()
@@ -142,33 +137,88 @@ impl TryFrom<ProofFields> for InclusionProof {
     }
 }
 
-impl InclusionProof {
-    pub fn bind(self, coin: Coin) -> Result<CoinWitness> {
-        if self.leaf != coin.leaf_hash() {
-            bail!("RPC proven leaf does not match reconstructed coin");
-        }
-        CoinWitness::new(coin, self.proved_at, self.target, self.hashes)
+impl ChainTipProof {
+    pub fn proved_at(&self) -> BlockHash {
+        self.proved_at
+    }
+
+    pub fn targets(&self) -> &[u64] {
+        &self.targets
+    }
+
+    pub fn leaves(&self) -> &[[u8; 32]] {
+        &self.leaves
+    }
+
+    pub fn hashes(&self) -> &[[u8; 32]] {
+        &self.hashes
     }
 }
 
-impl Client<'_> {
-    pub fn unspent_output(&mut self, outpoint: OutPoint) -> Result<UnspentOutput> {
-        let output: Option<UnspentOutput> =
-            self.call("gettxout", (outpoint.txid, outpoint.vout, false))?;
-        output.context("coin is absent from the confirmed UTXO set")
+/// Parsed accumulator state reported by the node, not independently verified chain state.
+#[derive(Debug, Deserialize)]
+#[serde(try_from = "RootsResponse")]
+pub struct Roots {
+    num_leaves: u64,
+    roots: Vec<[u8; 32]>,
+}
+
+impl Roots {
+    pub fn num_leaves(&self) -> u64 {
+        self.num_leaves
     }
 
-    pub fn block_location(&mut self, hash: BlockHash) -> Result<super::BlockLocation> {
-        let result: super::BlockLocation = self.call("getblockheader", (hash, true))?;
-        if result.hash() != hash {
-            bail!("RPC block location does not match requested hash");
+    /// Root bytes in the node's order, with no block-hash byte reversal.
+    pub fn roots(&self) -> &[[u8; 32]] {
+        &self.roots
+    }
+}
+
+#[derive(Deserialize)]
+struct RootsResponse {
+    #[serde(rename = "numleaves")]
+    num_leaves: u64,
+    #[serde(deserialize_with = "deserialize_roots")]
+    roots: Vec<[u8; 32]>,
+}
+
+fn deserialize_roots<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<[u8; 32]>, D::Error> {
+    // Go encodes a nil slice as null for an empty accumulator.
+    let roots = Option::<Vec<String>>::deserialize(deserializer)?.unwrap_or_default();
+    roots
+        .iter()
+        .map(|text| {
+            <[u8; 32]>::from_hex(text).map_err(|_| serde::de::Error::custom("invalid root hash"))
+        })
+        .collect()
+}
+
+impl TryFrom<RootsResponse> for Roots {
+    type Error = anyhow::Error;
+    fn try_from(response: RootsResponse) -> Result<Self> {
+        let RootsResponse { num_leaves, roots } = response;
+        if roots.len() != usize::try_from(num_leaves.count_ones())? {
+            bail!("RPC root count does not match leaf count");
         }
-        Ok(result)
+        Ok(Self { num_leaves, roots })
     }
+}
 
-    pub fn inclusion_proof(&mut self, outpoint: OutPoint) -> Result<InclusionProof> {
-        self.call("proveutxochaintipinclusion", ([outpoint.txid], [outpoint.vout], 1))
-            .context("cannot retrieve coin membership proof; coin must be unspent and node needs a proof index")
+/// Hash and height from a node's block lookup.
+#[derive(Debug, Deserialize)]
+pub struct BlockLocation {
+    hash: BlockHash,
+    height: u32,
+}
+
+impl BlockLocation {
+    pub fn hash(&self) -> BlockHash {
+        self.hash
+    }
+    pub fn height(&self) -> u32 {
+        self.height
     }
 }
 

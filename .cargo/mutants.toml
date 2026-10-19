@@ -1,5 +1,5 @@
 # Native trust boundaries. Guest execution and real-node checks run separately.
-examine_globs = ["core/src/context.rs", "core/src/network.rs", "core/src/coin.rs", "host/src/coin.rs", "host/src/connection/utreexod_rpc/coin.rs", "host/src/context.rs", "host/src/connection/peer/mod.rs"]
+examine_globs = ["core/src/context.rs", "core/src/network.rs", "core/src/coin.rs", "host/src/coin.rs", "host/src/connection/utreexod_rpc/mod.rs", "host/src/connection/utreexod_rpc/responses.rs", "host/src/context.rs", "host/src/connection/peer/mod.rs"]
 exclude_globs = ["**/tests/**", "**/tests.rs"]
 test_package = ["walledcity-core", "walledcity-host"]
 additional_cargo_args = ["--locked", "--release"]

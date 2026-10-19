@@ -1,6 +1,5 @@
 use super::*;
 use crate::test_support::{accept, read_http};
-use anyhow::Context;
 use bitcoin::{
     BlockHash, Network,
     blockdata::constants::genesis_block,
@@ -15,7 +14,6 @@ use std::{
     thread,
 };
 use url::Url;
-use walledcity_core::coin::Coin;
 
 type Step = (&'static str, Value, Value);
 
@@ -164,5 +162,78 @@ fn retrieval_checks_coin_proof_and_final_chain_bindings() -> Result<()> {
             .context("invalid UTXO accepted")?;
         assert!(format!("{error:#}").contains(reason), "{error:#}");
     }
+    Ok(())
+}
+
+#[test]
+fn single_coin_binding_enforces_domain_rules_on_rpc_data() -> Result<()> {
+    let block = genesis_block(Network::Regtest);
+    let outpoint = OutPoint::new(block.txdata[0].compute_txid(), 0);
+    let coin = Coin::new(
+        outpoint,
+        block.block_hash(),
+        10,
+        true,
+        block.txdata[0].output[0].clone(),
+    )?;
+    let leaf = sha256d::Hash::from_byte_array(coin.leaf_hash());
+    let response = json!({"provedathash":block.block_hash(),"prooftargets":[0],
+        "hashesproven":[leaf],"proofhashes":[]});
+    let witness = bind(coin.clone(), &serde_json::from_value(response.clone())?)?;
+    assert_eq!(witness.coin(), &coin);
+    for (targets, leaves, hashes, reason) in [
+        (json!([]), json!([]), json!([]), "expected one proof target"),
+        (
+            json!([0, 1]),
+            json!([leaf, leaf]),
+            json!([]),
+            "expected one proof target",
+        ),
+        (
+            json!([0]),
+            json!([BlockHash::all_zeros()]),
+            json!([]),
+            "reconstructed coin",
+        ),
+        (
+            json!([u64::MAX]),
+            json!([leaf]),
+            json!([]),
+            "supported forest range",
+        ),
+        (
+            json!([0]),
+            json!([leaf]),
+            json!(vec![leaf; 62]),
+            "supported forest range",
+        ),
+    ] {
+        let mut invalid = response.clone();
+        invalid["prooftargets"] = targets;
+        invalid["hashesproven"] = leaves;
+        invalid["proofhashes"] = hashes;
+        let proof = serde_json::from_value(invalid)?;
+        let error = bind(coin.clone(), &proof)
+            .err()
+            .context("invalid proof binding accepted")?;
+        assert!(error.to_string().contains(reason), "{error:#}");
+    }
+    assert_eq!(creation_height(1, 10)?, 10);
+    assert_eq!(creation_height(2, 10)?, 9);
+    assert_eq!(creation_height(1, u32::MAX)?, u32::MAX);
+    assert!(
+        creation_height(0, 10)
+            .err()
+            .context("unconfirmed coin accepted")?
+            .to_string()
+            .contains("not confirmed")
+    );
+    assert!(
+        creation_height(12, 10)
+            .err()
+            .context("invalid age accepted")?
+            .to_string()
+            .contains("confirmation count")
+    );
     Ok(())
 }

@@ -5,13 +5,14 @@ use super::{
 };
 use anyhow::{Result, anyhow, bail};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use bitcoin::{BlockHash, block::Header, hex::FromHex};
-use serde::{Deserialize, Deserializer, Serialize, de::DeserializeOwned};
+use bitcoin::{BlockHash, OutPoint, block::Header};
+use serde::{Serialize, de::DeserializeOwned};
 use std::{fmt, io::Read};
 use ureq::{Agent, http::HeaderValue};
 use url::Url;
 
-mod coin;
+mod responses;
+pub use responses::{BlockLocation, ChainTipProof, Roots, TxOutResponse};
 
 pub struct Config {
     url: Url,
@@ -32,81 +33,11 @@ impl Config {
     }
 }
 
-/// Parsed accumulator state reported by the node, not independently verified chain state.
-#[derive(Debug, Deserialize)]
-#[serde(try_from = "RootsResponse")]
-pub struct Roots {
-    num_leaves: u64,
-    roots: Vec<[u8; 32]>,
-}
-
-impl Roots {
-    pub fn num_leaves(&self) -> u64 {
-        self.num_leaves
-    }
-
-    /// Root bytes in the node's order, with no block-hash byte reversal.
-    pub fn roots(&self) -> &[[u8; 32]] {
-        &self.roots
-    }
-}
-
-#[derive(Deserialize)]
-struct RootsResponse {
-    #[serde(rename = "numleaves")]
-    num_leaves: u64,
-    #[serde(deserialize_with = "deserialize_roots")]
-    roots: Vec<[u8; 32]>,
-}
-
-fn deserialize_roots<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Vec<[u8; 32]>, D::Error> {
-    // Go encodes a nil slice as null for an empty accumulator.
-    let roots = Option::<Vec<String>>::deserialize(deserializer)?.unwrap_or_default();
-    roots
-        .iter()
-        .map(|text| {
-            <[u8; 32]>::from_hex(text).map_err(|_| serde::de::Error::custom("invalid root hash"))
-        })
-        .collect()
-}
-
-impl TryFrom<RootsResponse> for Roots {
-    type Error = anyhow::Error;
-
-    fn try_from(response: RootsResponse) -> Result<Self> {
-        let RootsResponse { num_leaves, roots } = response;
-        // The forest has one root for each set bit in the leaf count.
-        if roots.len() != usize::try_from(num_leaves.count_ones())? {
-            bail!("RPC root count does not match leaf count");
-        }
-        Ok(Self { num_leaves, roots })
-    }
-}
-
 /// Utreexod's HTTP JSON-RPC client.
 pub struct Client<'a> {
     config: &'a Config,
     agent: Agent,
     id: u64,
-}
-
-/// Hash and height from one RPC best-chain snapshot.
-#[derive(Debug, Deserialize)]
-pub struct BlockLocation {
-    hash: BlockHash,
-    height: u32,
-}
-
-impl BlockLocation {
-    pub fn hash(&self) -> BlockHash {
-        self.hash
-    }
-
-    pub fn height(&self) -> u32 {
-        self.height
-    }
 }
 
 impl<'a> Client<'a> {
@@ -142,6 +73,31 @@ impl<'a> Client<'a> {
     /// Request accumulator state at this exact block, rather than a moving tip.
     pub fn utreexo_roots(&mut self, block: &BlockHash) -> Result<Roots> {
         self.call("getutreexoroots", [block])
+    }
+
+    pub fn tx_out(
+        &mut self,
+        outpoint: OutPoint,
+        include_mempool: bool,
+    ) -> Result<Option<TxOutResponse>> {
+        self.call("gettxout", (outpoint.txid, outpoint.vout, include_mempool))
+    }
+
+    pub fn block_location(&mut self, hash: BlockHash) -> Result<BlockLocation> {
+        let result: BlockLocation = self.call("getblockheader", (hash, true))?;
+        if result.hash() != hash {
+            bail!("RPC block location does not match requested hash");
+        }
+        Ok(result)
+    }
+
+    pub fn prove_utxo_chain_tip_inclusion(
+        &mut self,
+        outpoints: &[OutPoint],
+    ) -> Result<ChainTipProof> {
+        let txids: Vec<_> = outpoints.iter().map(|outpoint| outpoint.txid).collect();
+        let vouts: Vec<_> = outpoints.iter().map(|outpoint| outpoint.vout).collect();
+        self.call("proveutxochaintipinclusion", (txids, vouts, 1))
     }
 
     fn call<T: DeserializeOwned>(&mut self, method: &str, params: impl Serialize) -> Result<T> {

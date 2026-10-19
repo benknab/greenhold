@@ -45,6 +45,32 @@ fn best_request() -> Value {
 }
 
 #[test]
+fn output_lookup_and_proof_request_preserve_rpc_semantics() -> Result<()> {
+    let first = OutPoint::new(BLOCK.parse()?, 2);
+    let second = OutPoint::new("11".repeat(32).parse()?, 3);
+    let replies = vec![
+        (
+            json!({"jsonrpc":"1.0","id":1,"method":"gettxout","params":[first.txid,2,true]}),
+            json!({"id":1,"result":null}).to_string(),
+        ),
+        (
+            json!({"jsonrpc":"1.0","id":2,"method":"proveutxochaintipinclusion",
+            "params":[[first.txid,second.txid],[2,3],1]}),
+            json!({"id":2,"result":{"provedathash":BLOCK,"prooftargets":[4,5],
+                "hashesproven":[BLOCK,BLOCK],"proofhashes":[]}})
+            .to_string(),
+        ),
+    ];
+    let (config, task) = serve("200 OK", replies, false)?;
+    let mut client = Client::new(&config);
+    assert!(client.tx_out(first, true)?.is_none());
+    let proof = client.prove_utxo_chain_tip_inclusion(&[first, second])?;
+    assert_eq!(proof.targets(), &[4, 5]);
+    task.join().map_err(|_| anyhow!("RPC mock panicked"))??;
+    Ok(())
+}
+
+#[test]
 fn authenticated_and_anonymous_lookup_preserves_block_and_root_bytes() -> Result<()> {
     for auth in [false, true] {
         let replies = vec![

@@ -1,7 +1,10 @@
 use crate::{connection::utreexod_rpc, context};
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use bitcoin::OutPoint;
-use walledcity_core::{coin::CoinWitness, context::ChainContext};
+use walledcity_core::{
+    coin::{Coin, CoinWitness},
+    context::ChainContext,
+};
 
 /// All state is fetched on this run. A proof cannot select a substitute context.
 pub fn fetch(
@@ -11,12 +14,23 @@ pub fn fetch(
 ) -> Result<(ChainContext, CoinWitness)> {
     let context = context::fetch(request, config)?;
     let mut rpc = utreexod_rpc::Client::new(config);
-    let output = rpc.unspent_output(outpoint)?;
+    let output = rpc
+        .tx_out(outpoint, false)?
+        .context("coin is absent from the confirmed UTXO set")?;
     let observed = rpc.block_location(output.observed_at())?;
-    let creation_height = output.creation_height(observed.height())?;
+    let creation_height = creation_height(output.confirmations(), observed.height())?;
     let creation_hash = rpc.block_hash(creation_height)?;
-    let coin = output.into_coin(outpoint, creation_hash, creation_height)?;
-    let witness = rpc.inclusion_proof(outpoint)?.bind(coin)?;
+    let coin = Coin::new(
+        outpoint,
+        creation_hash,
+        creation_height,
+        output.is_coinbase(),
+        output.output().clone(),
+    )?;
+    let proof = rpc.prove_utxo_chain_tip_inclusion(&[outpoint]).context(
+        "cannot retrieve coin membership proof; coin must be unspent and node needs a proof index",
+    )?;
+    let witness = bind(coin, &proof)?;
     witness.verify(&context, outpoint)?;
     for (height, hash) in [
         (creation_height, creation_hash),
@@ -28,6 +42,28 @@ pub fn fetch(
         }
     }
     Ok((context, witness))
+}
+
+fn creation_height(confirmations: u32, observed_height: u32) -> Result<u32> {
+    let age = confirmations
+        .checked_sub(1)
+        .context("coin is not confirmed")?;
+    observed_height
+        .checked_sub(age)
+        .context("RPC confirmation count exceeds observed height")
+}
+
+fn bind(coin: Coin, proof: &utreexod_rpc::ChainTipProof) -> Result<CoinWitness> {
+    let [target] = proof.targets() else {
+        bail!("expected one proof target");
+    };
+    let [leaf] = proof.leaves() else {
+        bail!("expected one proven leaf");
+    };
+    if *leaf != coin.leaf_hash() {
+        bail!("RPC proven leaf does not match reconstructed coin");
+    }
+    CoinWitness::new(coin, proof.proved_at(), *target, proof.hashes().to_vec())
 }
 
 #[cfg(test)]
