@@ -65,6 +65,29 @@ fn hash(height: u32, block: BlockHash) -> Step {
 }
 
 #[test]
+fn header_lookup_binds_the_parsed_header_to_the_requested_hash() -> Result<()> {
+    let header = genesis_block(Network::Regtest).header;
+    let hash = header.block_hash();
+    for requested in [hash, BlockHash::all_zeros()] {
+        let (config, task) = serve_rpc(vec![step(
+            "getblockheader",
+            json!([requested, false]),
+            json!(serialize(&header).as_hex().to_string()),
+        )])?;
+        let result = block_header(&mut utreexod_rpc::Client::new(&config), &requested)
+            .map_err(|error| error.to_string());
+        task.join().map_err(|_| anyhow!("RPC mock panicked"))??;
+        let expected = if requested == hash {
+            Ok(header)
+        } else {
+            Err("RPC header does not match requested block hash".to_owned())
+        };
+        assert_eq!(result, expected);
+    }
+    Ok(())
+}
+
+#[test]
 fn rpc_tip_is_resolved_once_on_each_requested_network() -> Result<()> {
     for network in [Network::Bitcoin, Network::Signet, Network::Regtest] {
         // Synthetic height binding and roots, for retrieval behavior only.

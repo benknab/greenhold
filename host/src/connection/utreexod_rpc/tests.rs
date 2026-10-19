@@ -1,6 +1,10 @@
 use super::*;
-use crate::test_support::{accept, read_http};
-use anyhow::Context;
+use crate::{
+    connection::MAX_MESSAGE,
+    test_support::{accept, read_http},
+};
+use anyhow::{Context, Result, anyhow, bail};
+use bitcoin::OutPoint;
 use serde_json::{Value, json};
 use std::{
     io::{BufReader, Write},
@@ -63,10 +67,43 @@ fn output_lookup_and_proof_request_preserve_rpc_semantics() -> Result<()> {
     ];
     let (config, task) = serve("200 OK", replies, false)?;
     let mut client = Client::new(&config);
-    assert!(client.tx_out(first, true)?.is_none());
-    let proof = client.prove_utxo_chain_tip_inclusion(&[first, second])?;
+    assert!(client.tx_out(&first.txid, first.vout, true)?.is_none());
+    let proof = client.prove_utxo_chain_tip_inclusion(&[first.txid, second.txid], &[2, 3])?;
     assert_eq!(proof.proof_targets, [4, 5]);
     task.join().map_err(|_| anyhow!("RPC mock panicked"))??;
+    Ok(())
+}
+
+#[test]
+fn header_endpoint_parses_both_formats_without_verifying_chain_data() -> Result<()> {
+    let header = bitcoin::blockdata::constants::genesis_block(bitcoin::Network::Regtest).header;
+    let hash = header.block_hash();
+    let raw = bitcoin::consensus::encode::serialize_hex(&header);
+    for requested in [hash, BLOCK.parse()?] {
+        let replies = vec![
+            (
+                json!({"jsonrpc":"1.0","id":1,"method":"getblockheader","params":[requested,false]}),
+                json!({"id":1,"result":raw}).to_string(),
+            ),
+            (
+                json!({"jsonrpc":"1.0","id":2,"method":"getblockheader","params":[requested,true]}),
+                json!({"id":2,"result":{"hash":hash,"height":0}}).to_string(),
+            ),
+        ];
+        let (config, task) = serve("200 OK", replies, false)?;
+        let mut client = Client::new(&config);
+        let fetched_header = client.block_header(&requested, false);
+        let location = client.block_header(&requested, true);
+        task.join().map_err(|_| anyhow!("RPC mock panicked"))??;
+        let BlockHeaderResponse::Raw(fetched_header) = fetched_header? else {
+            bail!("raw header returned a verbose response");
+        };
+        assert_eq!(fetched_header, header);
+        let BlockHeaderResponse::Verbose(location) = location? else {
+            bail!("verbose header returned a raw response");
+        };
+        assert_eq!((location.hash, location.height), (hash, 0));
+    }
     Ok(())
 }
 

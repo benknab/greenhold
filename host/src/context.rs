@@ -1,6 +1,6 @@
 use crate::connection::utreexod_rpc;
 use anyhow::{Context as _, Result, bail};
-use bitcoin::{Network, blockdata::constants::genesis_block};
+use bitcoin::{BlockHash, Network, block::Header, blockdata::constants::genesis_block};
 use walledcity_core::context::{AccumulatorState, BlockEndpoint, ChainContext};
 use walledcity_core::network::SupportedNetwork;
 
@@ -48,9 +48,8 @@ pub fn fetch(request: Request, config: &utreexod_rpc::Config) -> Result<ChainCon
             .best_block()
             .context("cannot resolve Utreexod RPC tip")?;
         let height = block.height;
-        let header = rpc
-            .block_header(&block.hash)
-            .context("cannot retrieve RPC tip header")?;
+        let header =
+            block_header(&mut rpc, &block.hash).context("cannot retrieve RPC tip header")?;
         (
             height,
             Some(BlockEndpoint::new(request.network.into(), height, header)?),
@@ -100,10 +99,19 @@ fn endpoint_block(
     let hash = rpc
         .block_hash(height)
         .with_context(|| format!("cannot resolve RPC block at height {height}"))?;
-    let header = rpc
-        .block_header(&hash)
+    let header = block_header(rpc, &hash)
         .with_context(|| format!("cannot retrieve RPC header at height {height}"))?;
     BlockEndpoint::new(network, height, header)
+}
+
+fn block_header(rpc: &mut utreexod_rpc::Client<'_>, hash: &BlockHash) -> Result<Header> {
+    let utreexod_rpc::BlockHeaderResponse::Raw(header) = rpc.block_header(hash, false)? else {
+        bail!("expected a raw RPC block header");
+    };
+    if header.block_hash() != *hash {
+        bail!("RPC header does not match requested block hash");
+    }
+    Ok(header)
 }
 
 fn crosscheck(rpc: &mut utreexod_rpc::Client<'_>, block: &BlockEndpoint) -> Result<()> {

@@ -15,9 +15,16 @@ pub fn fetch(
     let context = context::fetch(request, config)?;
     let mut rpc = utreexod_rpc::Client::new(config);
     let output = rpc
-        .tx_out(outpoint, false)?
+        .tx_out(&outpoint.txid, outpoint.vout, false)?
         .context("coin is absent from the confirmed UTXO set")?;
-    let observed = rpc.block_location(output.best_block)?;
+    let utreexod_rpc::BlockHeaderResponse::Verbose(observed) =
+        rpc.block_header(&output.best_block, true)?
+    else {
+        bail!("expected a verbose RPC block header");
+    };
+    if observed.hash != output.best_block {
+        bail!("RPC block location does not match requested hash");
+    }
     let creation_height = creation_height(output.confirmations, observed.height)?;
     let creation_hash = rpc.block_hash(creation_height)?;
     let coin = Coin::new(
@@ -30,7 +37,7 @@ pub fn fetch(
             script_pubkey: output.script_pub_key.hex,
         },
     )?;
-    let proof = rpc.prove_utxo_chain_tip_inclusion(&[outpoint]).context(
+    let proof = rpc.prove_utxo_chain_tip_inclusion(&[outpoint.txid], &[outpoint.vout]).context(
         "cannot retrieve coin membership proof; coin must be unspent and node needs a proof index",
     )?;
     let witness = bind(coin, proof)?;
