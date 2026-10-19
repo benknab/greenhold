@@ -85,7 +85,7 @@ fn run(outpoint: OutPoint, steps: Vec<Step>) -> Result<Result<(ChainContext, Coi
     });
     let result = fetch(
         outpoint,
-        context::Request::new(Network::Regtest, None, None)?,
+        context::Input::new(Network::Regtest, None, None)?,
         &config,
     );
     task.join()

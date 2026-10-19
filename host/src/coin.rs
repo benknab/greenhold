@@ -9,10 +9,10 @@ use walledcity_core::{
 /// All state is fetched on this run. A proof cannot select a substitute context.
 pub fn fetch(
     outpoint: OutPoint,
-    request: context::Request,
+    input: context::Input,
     config: &utreexod_rpc::Config,
 ) -> Result<(ChainContext, CoinWitness)> {
-    let context = context::fetch(request, config)?;
+    let context = context::fetch(input, config)?;
     let mut rpc = utreexod_rpc::Client::new(config);
     let output = rpc
         .tx_out(&outpoint.txid, outpoint.vout, false)?

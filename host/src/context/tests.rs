@@ -51,9 +51,9 @@ fn serve_rpc(steps: Vec<Step>) -> Result<(utreexod_rpc::Config, JoinHandle<Resul
     Ok((config, task))
 }
 
-fn run(request: Request, rpc: Vec<Step>) -> Result<Result<ChainContext>> {
+fn run(input: Input, rpc: Vec<Step>) -> Result<Result<ChainContext>> {
     let (config, rpc_task) = serve_rpc(rpc)?;
-    let result = fetch(request, &config);
+    let result = fetch(input, &config);
     rpc_task
         .join()
         .map_err(|_| anyhow!("RPC mock panicked"))??;
@@ -109,7 +109,7 @@ fn rpc_tip_is_resolved_once_on_each_requested_network() -> Result<()> {
             hash(10, block),
         ];
         // The script permits exactly one tip query.
-        let context = run(Request::new(network, Some(0), None)?, rpc)??;
+        let context = run(Input::new(network, Some(0), None)?, rpc)??;
         assert_eq!(context.network(), network);
         assert_eq!(context.last().height(), 10);
         assert_eq!(context.last().hash(), block);
@@ -133,7 +133,7 @@ fn selected_tip_reorg_fails() -> Result<()> {
         ),
         hash(0, BlockHash::all_zeros()),
     ];
-    let error = run(Request::new(Network::Bitcoin, None, None)?, rpc)?
+    let error = run(Input::new(Network::Bitcoin, None, None)?, rpc)?
         .err()
         .context("expected retrieval failure")?;
     assert!(error.to_string().contains("RPC chain changed"));
@@ -148,17 +148,14 @@ fn rejects_wrong_networks_before_retrieving_state() -> Result<()> {
         } else {
             genesis_block(Network::Bitcoin).block_hash()
         };
-        let error = run(
-            Request::new(network, Some(0), Some(0))?,
-            vec![hash(0, wrong)],
-        )?
-        .err()
-        .context("expected network failure")?;
+        let error = run(Input::new(network, Some(0), Some(0))?, vec![hash(0, wrong)])?
+            .err()
+            .context("expected network failure")?;
         assert!(error.to_string().contains("not on the requested network"));
     }
-    assert!(Request::new(Network::Bitcoin, Some(2), Some(1)).is_err());
-    assert!(Request::new(Network::Testnet, None, None).is_err());
-    assert!(Request::new(Network::Testnet4, None, None).is_err());
+    assert!(Input::new(Network::Bitcoin, Some(2), Some(1)).is_err());
+    assert!(Input::new(Network::Testnet, None, None).is_err());
+    assert!(Input::new(Network::Testnet4, None, None).is_err());
     Ok(())
 }
 
@@ -203,7 +200,7 @@ fn rejects_unavailable_state_malformed_headers_and_reorgs() -> Result<()> {
         if case == "reorg" {
             rpc.push(hash(0, BlockHash::all_zeros()));
         }
-        let result = run(Request::new(Network::Bitcoin, Some(0), Some(0))?, rpc)?;
+        let result = run(Input::new(Network::Bitcoin, Some(0), Some(0))?, rpc)?;
         let error = result
             .err()
             .with_context(|| format!("{case} was accepted"))?;

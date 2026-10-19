@@ -23,13 +23,13 @@ fn main() -> ExitCode {
 fn run(cli: cli::Cli) -> Result<()> {
     match cli.command {
         cli::Command::Coin(options) => {
-            let request = context::Request::new(
+            let input = context::Input::new(
                 options.context.network.into(),
                 options.context.first_height,
                 options.context.last_height,
             )?;
             let rpc = options.context.connections.rpc_config()?;
-            let (context, witness) = coin::fetch(options.outpoint, request, &rpc)?;
+            let (context, witness) = coin::fetch(options.outpoint, input, &rpc)?;
             println!(
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
@@ -44,13 +44,13 @@ fn run(cli: cli::Cli) -> Result<()> {
             );
         }
         cli::Command::Context(options) => {
-            let request = context::Request::new(
+            let input = context::Input::new(
                 options.network.into(),
                 options.first_height,
                 options.last_height,
             )?;
             let rpc = options.connections.rpc_config()?;
-            let context = context::fetch(request, &rpc)?;
+            let context = context::fetch(input, &rpc)?;
             println!(
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({

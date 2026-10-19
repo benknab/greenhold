@@ -6,13 +6,13 @@ use walledcity_core::network::SupportedNetwork;
 
 /// Lookup heights. An omitted last height selects the RPC tip once during retrieval.
 #[derive(Clone, Copy, Debug)]
-pub struct Request {
+pub struct Input {
     network: SupportedNetwork,
     first: Option<u32>,
     last: Option<u32>,
 }
 
-impl Request {
+impl Input {
     pub fn new(network: Network, first: Option<u32>, last: Option<u32>) -> Result<Self> {
         if let (Some(first), Some(last)) = (first, last)
             && first > last
@@ -30,18 +30,18 @@ impl Request {
 /// Retrieve public state from the caller's chosen Utreexod node on this run.
 /// The RPC node supplies headers, height bindings, and roots at the last block.
 /// This function never accepts a saved context as authority.
-pub fn fetch(request: Request, config: &utreexod_rpc::Config) -> Result<ChainContext> {
+pub fn fetch(input: Input, config: &utreexod_rpc::Config) -> Result<ChainContext> {
     let mut rpc = utreexod_rpc::Client::new(config);
-    let genesis = genesis_block(Network::from(request.network)).block_hash();
+    let genesis = genesis_block(Network::from(input.network)).block_hash();
     if rpc.block_hash(0)? != genesis {
         bail!(
             "RPC node is not on the requested network ({})",
-            request.network
+            input.network
         );
     }
     // Pin the tip's hash and height from one RPC snapshot. Never replace it with a
     // later tip while retrieving this context.
-    let (last_height, tip) = if let Some(height) = request.last {
+    let (last_height, tip) = if let Some(height) = input.last {
         (height, None)
     } else {
         let block = rpc
@@ -52,10 +52,10 @@ pub fn fetch(request: Request, config: &utreexod_rpc::Config) -> Result<ChainCon
             block_header(&mut rpc, &block.hash).context("cannot retrieve RPC tip header")?;
         (
             height,
-            Some(BlockEndpoint::new(request.network.into(), height, header)?),
+            Some(BlockEndpoint::new(input.network.into(), height, header)?),
         )
     };
-    let first_height = request.first.unwrap_or(last_height);
+    let first_height = input.first.unwrap_or(last_height);
     if first_height > last_height {
         bail!("first height must not exceed last height");
     }
@@ -64,14 +64,14 @@ pub fn fetch(request: Request, config: &utreexod_rpc::Config) -> Result<ChainCon
     {
         tip.clone()
     } else {
-        endpoint_block(&mut rpc, request.network.into(), first_height)?
+        endpoint_block(&mut rpc, input.network.into(), first_height)?
     };
     let last = if first_height == last_height {
         first.clone()
     } else if let Some(tip) = tip {
         tip
     } else {
-        endpoint_block(&mut rpc, request.network.into(), last_height)?
+        endpoint_block(&mut rpc, input.network.into(), last_height)?
     };
     let roots = rpc.utreexo_roots(&last.hash()).with_context(|| {
         format!(
