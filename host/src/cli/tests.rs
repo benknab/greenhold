@@ -104,6 +104,34 @@ fn incomplete_auth_and_invalid_values_fail_during_parsing() -> Result<()> {
 }
 
 #[test]
+fn coin_minimum_parses_into_the_domain_range() -> Result<()> {
+    let outpoint = format!("{}:0", "11".repeat(32));
+    let parse_coin = |extra: &[&str]| -> Result<CoinOptions> {
+        let args = ["host", "coin", outpoint.as_str()]
+            .into_iter()
+            .chain(extra.iter().copied());
+        let Command::Coin(options) = Cli::try_parse_from(args)?.command else {
+            bail!("expected coin command");
+        };
+        Ok(options)
+    };
+    assert_eq!(u64::from(parse_coin(&[])?.minimum_sats), 1);
+    let max = "2100000000000000";
+    assert_eq!(
+        u64::from(parse_coin(&["--minimum-sats", max])?.minimum_sats),
+        2_100_000_000_000_000
+    );
+    for value in ["0", "2100000000000001", "-1", "1.5", "one"] {
+        let flag = format!("--minimum-sats={value}");
+        let error = Cli::try_parse_from(["host", "coin", &outpoint, &flag])
+            .err()
+            .context("invalid minimum accepted")?;
+        assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
+    }
+    Ok(())
+}
+
+#[test]
 fn rpc_url_excludes_embedded_secrets_and_non_http_transports() {
     for text in [
         "ftp://host/",

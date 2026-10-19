@@ -1,18 +1,19 @@
 # Greenhold
 
 An experimental Bitcoin proof-of-funds project using BIP-322 and RISC Zero.
-The goal is to prove the following claim without revealing the address or coin:
+The goal is to prove the following claim without revealing the coin or its script:
 
 > There exists an eligible coin worth at least M, created by X and unspent at T,
-> whose controlling address authorized this exact claim.
+> whose locking script authorized this exact claim.
 
 M is the minimum amount in satoshis. X and T are block heights, with X ≤ T.
 The coin must have been created at or before X and remain unspent in the accepted
-chain state at T. Authorization means a valid signature for the coin's controlling
-address over the exact claim.
+chain state at T. Authorization means a valid BIP-322 signature for the coin's
+locking script (its scriptPubKey) over the exact claim. The script does not need
+an address form.
 
 The signature establishes authorization at signing time. It does not identify a
-person or prove that the signer held the key at X, at T, or throughout that period.
+person or prove that the signer held the keys at X, at T, or throughout that period.
 The signature alone does not establish when it was made.
 
 ## Getting started

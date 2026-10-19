@@ -7,7 +7,11 @@ use bitcoin::{
     hex::{DisplayHex, FromHex},
     transaction::Version,
 };
-use greenhold_core::{coin::CoinWitness, context::ChainContext};
+use greenhold_core::{
+    coin::CoinWitness,
+    context::ChainContext,
+    eligibility::{EligibleCoin, MinimumAmount},
+};
 use serde_json::{Value, json};
 
 fn spend(outpoint: OutPoint, values: &[u64], script: &ScriptBuf) -> Transaction {
@@ -27,6 +31,20 @@ fn spend(outpoint: OutPoint, values: &[u64], script: &ScriptBuf) -> Transaction 
             })
             .collect(),
     }
+}
+
+fn mined(node: &Node, height: u32, script: &ScriptBuf) -> Result<OutPoint> {
+    let hash = node.rpc("getblockhash", &json!([height]))?;
+    let raw = node.rpc("getblock", &json!([hash, 0]))?;
+    let block: bitcoin::Block =
+        deserialize(&Vec::<u8>::from_hex(raw.as_str().context("raw block")?)?)?;
+    let coinbase = &block.txdata[0];
+    let vout = coinbase
+        .output
+        .iter()
+        .position(|output| output.script_pubkey == *script)
+        .context("mining output")?;
+    Ok(OutPoint::new(coinbase.compute_txid(), u32::try_from(vout)?))
 }
 
 fn broadcast(node: &Node, transaction: &Transaction) -> Result<()> {
@@ -53,19 +71,8 @@ fn single_coin_membership_uses_real_transactions_and_rejects_spent_coins() -> Re
     )?;
     // Three regtest versionbits windows activate SegWit and mature the coinbase.
     node.rpc("generate", &json!([432]))?;
-    let hash = node.rpc("getblockhash", &json!([1]))?;
-    let raw = node.rpc("getblock", &json!([hash, 0]))?;
-    let block: bitcoin::Block =
-        deserialize(&Vec::<u8>::from_hex(raw.as_str().context("raw block")?)?)?;
-    let coinbase = &block.txdata[0];
-    let txid = coinbase.compute_txid();
-    let vout = coinbase
-        .output
-        .iter()
-        .position(|output| output.script_pubkey == address.script_pubkey())
-        .context("mining output")?;
     let funding = spend(
-        OutPoint::new(txid, u32::try_from(vout)?),
+        mined(&node, 1, &address.script_pubkey())?,
         &[2_000_000_000, 2_999_990_000],
         &address.script_pubkey(),
     );
@@ -77,9 +84,31 @@ fn single_coin_membership_uses_real_transactions_and_rejects_spent_coins() -> Re
         &node,
         "regtest",
         "coin",
-        &[&input, "433", "--first-height", "433"],
+        &[
+            &input,
+            "433",
+            "--first-height",
+            "433",
+            "--minimum-sats",
+            "2000000000",
+        ],
     )?)?;
     assert_coin(&report, &funding, outpoint, 433)?;
+    rejection(
+        &command(
+            &node,
+            "regtest",
+            "coin",
+            &[&input, "--minimum-sats", "2000000001"],
+        )?,
+        "below the minimum",
+    );
+    // Created at 335: T - 335 = 98 at 433, so block 434 could not spend it.
+    let young = mined(&node, 335, &address.script_pubkey())?.to_string();
+    rejection(
+        &command(&node, "regtest", "coin", &[&young])?,
+        "coinbase coin is not spendable",
+    );
     rejection(
         &command(&node, "regtest", "coin", &[&input, "--first-height", "432"])?,
         "cutoff",
@@ -92,6 +121,10 @@ fn single_coin_membership_uses_real_transactions_and_rejects_spent_coins() -> Re
 
     node.rpc("generate", &json!([1]))?;
     verify_after_tip_advance(&node, &report, outpoint)?;
+    let mature = success(&command(&node, "regtest", "coin", &[&young])?)?;
+    assert_eq!(mature["context"]["last"]["height"], 434);
+    assert_eq!(mature["witness"]["coin"]["coinbase"], true);
+    assert_eq!(mature["witness"]["coin"]["creation_height"], 335);
     rejection(
         &command(&node, "regtest", "coin", &[&input, "433"])?,
         "proof block height does not match requested last height",
@@ -127,7 +160,9 @@ fn verify_after_tip_advance(node: &Node, report: &Value, outpoint: OutPoint) -> 
     let historical = success(&context(node, "regtest", &["433"])?)?;
     let fetched: ChainContext = serde_json::from_value(historical["context"].clone())?;
     let witness: CoinWitness = serde_json::from_value(report["witness"].clone())?;
-    witness.verify(&fetched, outpoint)?;
+    let minimum = serde_json::from_value(report["minimum_sats"].clone())?;
+    EligibleCoin::new(witness, &fetched, minimum)?;
+    assert_eq!(report["witness"]["coin"]["outpoint"], json!(outpoint));
     assert_eq!(
         historical["last_block_hash"],
         report["witness"]["proved_at"]
@@ -150,15 +185,16 @@ fn assert_coin(
     assert_eq!(report["context"]["last"]["height"], height);
     assert_eq!(report["witness"]["coin"]["creation_height"], 433);
     assert_eq!(report["witness"]["coin"]["coinbase"], false);
+    assert_eq!(report["witness"]["coin"]["outpoint"], json!(outpoint));
     let context: ChainContext = serde_json::from_value(report["context"].clone())?;
     let witness: CoinWitness = serde_json::from_value(report["witness"].clone())?;
-    witness.verify(&context, outpoint)?;
+    let minimum: MinimumAmount = serde_json::from_value(report["minimum_sats"].clone())?;
+    EligibleCoin::new(witness, &context, minimum)?;
     let mut corrupt = report["witness"].clone();
     corrupt["coin"]["output"]["value"] = json!(123);
     let corrupt: CoinWitness = serde_json::from_value(corrupt)?;
     assert!(
-        corrupt
-            .verify(&context, outpoint)
+        EligibleCoin::new(corrupt, &context, minimum)
             .err()
             .context("tampered amount accepted")?
             .to_string()

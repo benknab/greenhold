@@ -22,7 +22,7 @@ fn fixture() -> Result<(OutPoint, Vec<Step>)> {
     let hash = block.block_hash();
     let transaction = &block.txdata[0];
     let outpoint = OutPoint::new(transaction.compute_txid(), 0);
-    let coin = Coin::new(outpoint, hash, 10, true, transaction.output[0].clone())?;
+    let coin = Coin::new(outpoint, hash, 10, false, transaction.output[0].clone())?;
     let leaf = sha256d::Hash::from_byte_array(coin.leaf_hash());
     let mut proof_header = block.header;
     proof_header.prev_blockhash = hash;
@@ -40,7 +40,7 @@ fn fixture() -> Result<(OutPoint, Vec<Step>)> {
         (
             "gettxout",
             json!([outpoint.txid, 0, false]),
-            json!({"bestblock":hash,"confirmations":11,"value":50,"coinbase":true,
+            json!({"bestblock":hash,"confirmations":11,"value":50,"coinbase":false,
                 "scriptPubKey":{"hex":transaction.output[0].script_pubkey.as_bytes().as_hex().to_string()}}),
         ),
         (
@@ -74,7 +74,11 @@ fn fixture() -> Result<(OutPoint, Vec<Step>)> {
     Ok((outpoint, steps))
 }
 
-fn run(outpoint: OutPoint, steps: Vec<Step>) -> Result<Result<(ChainContext, CoinWitness)>> {
+fn run(
+    outpoint: OutPoint,
+    minimum: u64,
+    steps: Vec<Step>,
+) -> Result<Result<(ChainContext, EligibleCoin)>> {
     let listener = TcpListener::bind("127.0.0.1:0")?;
     let config = utreexod_rpc::Config::new(
         Url::parse(&format!("http://{}/", listener.local_addr()?))?,
@@ -98,6 +102,7 @@ fn run(outpoint: OutPoint, steps: Vec<Step>) -> Result<Result<(ChainContext, Coi
     let result = fetch(
         outpoint,
         context::Input::new(Network::Regtest, None, None)?,
+        MinimumAmount::try_from(minimum)?,
         &config,
     );
     task.join()
@@ -108,12 +113,18 @@ fn run(outpoint: OutPoint, steps: Vec<Step>) -> Result<Result<(ChainContext, Coi
 #[test]
 fn retrieval_checks_coin_and_proof_at_the_selected_block() -> Result<()> {
     let (outpoint, steps) = fixture()?;
-    let (context, witness) = run(outpoint, steps.clone())??;
+    let (context, coin) = run(outpoint, 5_000_000_000, steps.clone())??;
     assert_eq!(context.first().height(), 21);
     assert_eq!(context.last().height(), 21);
     assert_eq!(json!(context.last().hash()), steps[3].2["provedathash"]);
-    assert_eq!(witness.coin().output().value.to_sat(), 5_000_000_000);
-    witness.verify(&context, outpoint)?;
+    assert_eq!(coin.witness().coin().output().value.to_sat(), 5_000_000_000);
+    let error = run(outpoint, 5_000_000_001, steps.clone())?
+        .err()
+        .context("coin below the minimum accepted")?;
+    assert!(
+        format!("{error:#}").contains("below the minimum"),
+        "{error:#}"
+    );
     for (index, field, value, length, reason) in [
         (
             5,
@@ -141,7 +152,7 @@ fn retrieval_checks_coin_and_proof_at_the_selected_block() -> Result<()> {
         let mut changed = steps.clone();
         changed[index].2[field] = value;
         changed.truncate(length);
-        let error = run(outpoint, changed)?
+        let error = run(outpoint, 1, changed)?
             .err()
             .context("bad RPC data accepted")?;
         assert!(format!("{error:#}").contains(reason), "{error:#}");
@@ -149,7 +160,7 @@ fn retrieval_checks_coin_and_proof_at_the_selected_block() -> Result<()> {
     let mut changed = steps.clone();
     changed[7].2["roots"] = json!(["00".repeat(32)]);
     changed.truncate(8);
-    let error = run(outpoint, changed)?
+    let error = run(outpoint, 1, changed)?
         .err()
         .context("wrong roots accepted")?;
     assert!(format!("{error:#}").contains("membership mismatch"));
@@ -186,7 +197,7 @@ fn retrieval_checks_coin_and_proof_at_the_selected_block() -> Result<()> {
         let mut changed = steps.clone();
         changed[0].2 = replacement;
         changed.truncate(length);
-        let error = run(outpoint, changed)?
+        let error = run(outpoint, 1, changed)?
             .err()
             .context("invalid UTXO accepted")?;
         assert!(format!("{error:#}").contains(reason), "{error:#}");

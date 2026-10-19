@@ -54,6 +54,16 @@ impl Coin {
     }
 
     #[must_use]
+    pub fn creation_height(&self) -> u32 {
+        self.creation_height
+    }
+
+    #[must_use]
+    pub fn is_coinbase(&self) -> bool {
+        self.coinbase
+    }
+
+    #[must_use]
     pub fn output(&self) -> &TxOut {
         &self.output
     }
@@ -131,20 +141,14 @@ impl CoinWitness {
         &self.coin
     }
 
-    /// Verify the requested outpoint, creation cutoff, state block, and full leaf path.
-    /// This establishes unspentness, not authorization or coinbase maturity.
+    /// Verify the state block and full leaf path. This establishes that the coin is
+    /// unspent at the context's last block, not that it is eligible or authorized.
     ///
     /// # Errors
-    /// Rejects mismatched claims, out-of-forest targets, and incorrect paths or roots.
-    pub fn verify(&self, context: &ChainContext, expected: OutPoint) -> Result<()> {
-        if self.coin.outpoint != expected {
-            bail!("coin does not match requested outpoint");
-        }
+    /// Rejects a different proof block, out-of-forest targets, and incorrect paths or roots.
+    pub fn verify_membership(&self, context: &ChainContext) -> Result<()> {
         if self.proved_at != context.last().hash() {
             bail!("membership proof block does not match selected context");
-        }
-        if self.coin.creation_height > context.first().height() {
-            bail!("coin was created after first-height cutoff");
         }
         let row = self.target.leading_ones();
         let start = if row == 0 { 0 } else { u64::MAX << (64 - row) };

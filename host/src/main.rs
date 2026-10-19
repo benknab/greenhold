@@ -29,7 +29,8 @@ fn run(cli: cli::Cli) -> Result<()> {
                 options.context.last_height,
             )?;
             let rpc = options.context.connections.rpc_config()?;
-            let (context, witness) = coin::fetch(options.outpoint, input, &rpc)?;
+            let (context, coin) = coin::fetch(options.outpoint, input, options.minimum_sats, &rpc)?;
+            let witness = coin.witness();
             println!(
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
@@ -37,6 +38,7 @@ fn run(cli: cli::Cli) -> Result<()> {
                     "context_digest": context.digest(),
                     "context": context,
                     "witness": witness,
+                    "minimum_sats": options.minimum_sats,
                     "amount_sats": witness.coin().output().value.to_sat(),
                     "address": bitcoin::Address::from_script(&witness.coin().output().script_pubkey,
                         context.network()).ok().map(|address| address.to_string()),

@@ -1,7 +1,7 @@
 use crate::connection::utreexod_rpc;
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand};
-use greenhold_core::network::SupportedNetwork;
+use greenhold_core::{eligibility::MinimumAmount, network::SupportedNetwork};
 use url::Url;
 
 pub const DEFAULT_RPC: &str = "https://utreexo.hospitablealpaca.com/";
@@ -21,7 +21,7 @@ pub struct Cli {
 pub enum Command {
     /// Fetch headers and historical Utreexo state from the chosen Utreexod RPC node.
     Context(ContextOptions),
-    /// Fetch and verify one coin against an exact context (node proofs are tip-only).
+    /// Fetch one coin and check its eligibility at an exact context (node proofs are tip-only).
     Coin(CoinOptions),
 }
 
@@ -29,6 +29,10 @@ pub enum Command {
 pub struct CoinOptions {
     /// Candidate output as TXID:VOUT (zero-based output index).
     pub outpoint: bitcoin::OutPoint,
+
+    /// Minimum coin value M in satoshis, up to 2100000000000000.
+    #[arg(long, value_name = "SATS", default_value = "1")]
+    pub minimum_sats: MinimumAmount,
 
     #[command(flatten)]
     pub context: ContextOptions,

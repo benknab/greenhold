@@ -17,10 +17,10 @@ fn coin() -> Result<Coin> {
     )
 }
 
-fn context(leaves: u64, roots: Vec<[u8; 32]>, first: u32) -> Result<ChainContext> {
+fn context(leaves: u64, roots: Vec<[u8; 32]>) -> Result<ChainContext> {
     let header = genesis_block(Network::Regtest).header;
     ChainContext::new(
-        BlockEndpoint::new(Network::Regtest, first, header)?,
+        BlockEndpoint::new(Network::Regtest, 10, header)?,
         BlockEndpoint::new(Network::Regtest, 20, header)?,
         AccumulatorState::new(leaves, roots)?,
     )
@@ -33,7 +33,7 @@ fn reject(result: Result<()>, reason: &str) -> Result<()> {
 }
 
 #[test]
-fn single_coin_paths_bind_all_leaf_fields_and_claim_inputs() -> Result<()> {
+fn single_coin_paths_bind_all_leaf_fields_and_proof_block() -> Result<()> {
     let coin = coin()?;
     let leaf = coin.leaf_hash();
     // Independent vector from Python hashlib over the explicit wire preimage.
@@ -43,9 +43,9 @@ fn single_coin_paths_bind_all_leaf_fields_and_claim_inputs() -> Result<()> {
     );
     let sibling = [42; 32];
     let root: [u8; 32] = Sha512_256::digest([leaf, sibling].concat()).into();
-    let state = context(3, vec![root, [43; 32]], 10)?;
+    let state = context(3, vec![root, [43; 32]])?;
     let witness = CoinWitness::new(coin.clone(), state.last().hash(), 0, vec![sibling])?;
-    witness.verify(&state, coin.outpoint)?;
+    witness.verify_membership(&state)?;
     let json = serde_json::to_value(&witness)?;
     for (field, replacement) in [
         (
@@ -77,34 +77,23 @@ fn single_coin_paths_bind_all_leaf_fields_and_claim_inputs() -> Result<()> {
         let mut altered = json.clone();
         altered["coin"][field] = replacement;
         let altered: CoinWitness = serde_json::from_value(altered)?;
-        reject(
-            altered.verify(&state, altered.coin.outpoint),
-            "membership mismatch",
-        )?;
+        reject(altered.verify_membership(&state), "membership mismatch")?;
     }
-    reject(
-        witness.verify(&state, OutPoint::null()),
-        "requested outpoint",
-    )?;
-    reject(
-        witness.verify(&context(3, vec![root, [43; 32]], 9)?, coin.outpoint),
-        "cutoff",
-    )?;
     let mut wrong = witness.clone();
     wrong.proved_at = BlockHash::all_zeros();
-    reject(wrong.verify(&state, coin.outpoint), "proof block")?;
+    reject(wrong.verify_membership(&state), "proof block")?;
     wrong = witness.clone();
     wrong.hashes[0][0] ^= 1;
-    reject(wrong.verify(&state, coin.outpoint), "membership mismatch")?;
+    reject(wrong.verify_membership(&state), "membership mismatch")?;
     wrong = witness.clone();
     wrong.hashes.clear();
-    reject(wrong.verify(&state, coin.outpoint), "path length")?;
+    reject(wrong.verify_membership(&state), "path length")?;
     wrong = witness.clone();
     wrong.hashes.push(sibling);
-    reject(wrong.verify(&state, coin.outpoint), "path length")?;
+    reject(wrong.verify_membership(&state), "path length")?;
     wrong = witness;
     wrong.target = 1;
-    reject(wrong.verify(&state, coin.outpoint), "membership mismatch")?;
+    reject(wrong.verify_membership(&state), "membership mismatch")?;
     Ok(())
 }
 
@@ -121,12 +110,14 @@ fn sparse_forests_right_children_and_promoted_leaves() -> Result<()> {
         (3, vec![sibling, leaf], 2, vec![]),
         (2, vec![leaf], 1 << 63, vec![]), // survivor promoted after deleting its sibling
         (4, vec![root], (1 << 63) + 1, vec![sibling]),
+        (4, vec![leaf], 3 << 62, vec![]), // promoted twice to a row-two root
+        (8, vec![root], (3 << 62) + 1, vec![sibling]),
         (1, vec![leaf], 0, vec![]),
         ((1 << 61) + 1, vec![sibling, leaf], 1 << 61, vec![]),
     ] {
-        let state = context(leaves, roots, 10)?;
+        let state = context(leaves, roots)?;
         CoinWitness::new(coin.clone(), state.last().hash(), target, hashes)?
-            .verify(&state, coin.outpoint)?;
+            .verify_membership(&state)?;
     }
     for (leaves, roots, target) in [
         (0, vec![], 0),
@@ -135,10 +126,10 @@ fn sparse_forests_right_children_and_promoted_leaves() -> Result<()> {
         (1, vec![leaf], 1 << 63),
         (3, vec![leaf, leaf], (1 << 63) - 1),
     ] {
-        let state = context(leaves, roots, 10)?;
+        let state = context(leaves, roots)?;
         reject(
             CoinWitness::new(coin.clone(), state.last().hash(), target, vec![])?
-                .verify(&state, coin.outpoint),
+                .verify_membership(&state),
             "outside occupied forest",
         )?;
     }
