@@ -4,7 +4,7 @@ use anyhow::anyhow;
 use bitcoin::{BlockHash, consensus::serialize, hashes::Hash, hex::DisplayHex};
 use serde_json::{Value, json};
 use std::{
-    io::{BufRead, BufReader, Write},
+    io::{BufReader, Write},
     net::TcpListener,
     thread::{self, JoinHandle},
 };
@@ -51,54 +51,17 @@ fn serve_rpc(steps: Vec<Step>) -> Result<(utreexod_rpc::Config, JoinHandle<Resul
     Ok((config, task))
 }
 
-fn serve_electrum(steps: Vec<Step>) -> Result<(electrum::Endpoint, JoinHandle<Result<()>>)> {
-    let listener = TcpListener::bind("127.0.0.1:0")?;
-    let endpoint = format!("tcp://{}", listener.local_addr()?).parse()?;
-    let task = thread::spawn(move || {
-        let (socket, _) = accept(&listener)?;
-        let mut stream = BufReader::new(socket);
-        for (index, expected) in steps.iter().enumerate() {
-            let mut line = String::new();
-            stream.read_line(&mut line)?;
-            let request = serde_json::from_str(&line)?;
-            let reply = respond(&request, expected, u64::try_from(index)? + 1);
-            writeln!(stream.get_mut(), "{reply}")?;
-        }
-        Ok(())
-    });
-    Ok((endpoint, task))
-}
-
-fn run(request: Request, rpc: Vec<Step>, chain: Vec<Step>) -> Result<Result<ChainContext>> {
+fn run(request: Request, rpc: Vec<Step>) -> Result<Result<ChainContext>> {
     let (config, rpc_task) = serve_rpc(rpc)?;
-    let (endpoint, chain_task) = serve_electrum(chain)?;
-    let result = fetch(request, &endpoint, &config);
+    let result = fetch(request, &config);
     rpc_task
         .join()
         .map_err(|_| anyhow!("RPC mock panicked"))??;
-    chain_task
-        .join()
-        .map_err(|_| anyhow!("Electrum mock panicked"))??;
     Ok(result)
-}
-
-fn version() -> Step {
-    step(
-        "server.version",
-        json!([
-            concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION")),
-            "1.4"
-        ]),
-        json!(["fixture", "1.4"]),
-    )
 }
 
 fn hash(height: u32, block: BlockHash) -> Step {
     step("getblockhash", json!([height]), json!(block))
-}
-
-fn chain_network(block: BlockHash) -> Step {
-    step("server.features", json!([]), json!({"genesis_hash": block}))
 }
 
 #[test]
@@ -116,7 +79,6 @@ fn rpc_tip_is_pinned_and_first_height_defaults_to_it() -> Result<()> {
             step("getbestblock", json!([]), json!({"hash":block,"height":10})),
             step("getblockheader", json!([block, false]), json!(raw)),
         ];
-        let mut chain = vec![version(), chain_network(block)];
         if first == Some(0) {
             rpc.push(hash(0, block));
             rpc.push(step("getblockheader", json!([block, false]), json!(raw)));
@@ -134,11 +96,10 @@ fn rpc_tip_is_pinned_and_first_height_defaults_to_it() -> Result<()> {
             };
             for height in heights {
                 rpc.push(hash(height, block));
-                chain.push(step("blockchain.block.header", json!([height]), json!(raw)));
             }
         }
-        // The script permits exactly one tip query and no Electrum tip query.
-        let result = run(Request::new(network, first, None)?, rpc, chain)?;
+        // The script permits exactly one tip query.
+        let result = run(Request::new(network, first, None)?, rpc)?;
         if first == Some(11) {
             assert!(
                 result
@@ -158,39 +119,25 @@ fn rpc_tip_is_pinned_and_first_height_defaults_to_it() -> Result<()> {
 }
 
 #[test]
-fn selected_tip_reorg_and_electrum_lag_fail() -> Result<()> {
+fn selected_tip_reorg_fails() -> Result<()> {
     let header = genesis_block(Network::Bitcoin).header;
     let block = header.block_hash();
     let raw = serialize(&header).as_hex().to_string();
-    for reorg in [false, true] {
-        let rpc = vec![
-            hash(0, block),
-            step("getbestblock", json!([]), json!({"hash":block,"height":0})),
-            step("getblockheader", json!([block, false]), json!(raw)),
-            step(
-                "getutreexoroots",
-                json!([block]),
-                json!({"numleaves":0,"roots":[]}),
-            ),
-            hash(0, if reorg { BlockHash::all_zeros() } else { block }),
-        ];
-        let mut chain = vec![version(), chain_network(block)];
-        if !reorg {
-            chain.push((
-                "blockchain.block.header",
-                json!([0]),
-                json!({"error":{"code":-1,"message":"height unavailable"}}),
-            ));
-        }
-        let error = run(Request::new(Network::Bitcoin, None, None)?, rpc, chain)?
-            .err()
-            .context("expected retrieval failure")?;
-        assert!(error.to_string().contains(if reorg {
-            "RPC chain changed"
-        } else {
-            "cannot retrieve Electrum header"
-        }));
-    }
+    let rpc = vec![
+        hash(0, block),
+        step("getbestblock", json!([]), json!({"hash":block,"height":0})),
+        step("getblockheader", json!([block, false]), json!(raw)),
+        step(
+            "getutreexoroots",
+            json!([block]),
+            json!({"numleaves":0,"roots":[]}),
+        ),
+        hash(0, BlockHash::all_zeros()),
+    ];
+    let error = run(Request::new(Network::Bitcoin, None, None)?, rpc)?
+        .err()
+        .context("expected retrieval failure")?;
+    assert!(error.to_string().contains("RPC chain changed"));
     Ok(())
 }
 
@@ -223,19 +170,12 @@ fn fixed_historical_endpoints_and_single_block_context() -> Result<()> {
             json!([historical.block_hash()]),
             json!({"numleaves":3,"roots":["11".repeat(32), "22".repeat(32)]}),
         ));
-        let mut chain = vec![version(), chain_network(genesis.block_hash())];
         for (height, header) in endpoints {
             rpc.push(hash(height, header.block_hash()));
-            chain.push(step(
-                "blockchain.block.header",
-                json!([height]),
-                json!(serialize(&header).as_hex().to_string()),
-            ));
         }
         let context = run(
             Request::new(Network::Bitcoin, Some(first), Some(800_000))?,
             rpc,
-            chain,
         )??;
         assert_eq!(context.first().height(), first);
         assert_eq!(context.last().height(), 800_000);
@@ -249,25 +189,18 @@ fn fixed_historical_endpoints_and_single_block_context() -> Result<()> {
 #[test]
 fn rejects_wrong_networks_before_retrieving_state() -> Result<()> {
     for network in [Network::Bitcoin, Network::Signet, Network::Regtest] {
-        let genesis = genesis_block(network).block_hash();
         let wrong = if network == Network::Bitcoin {
             genesis_block(Network::Testnet).block_hash()
         } else {
             genesis_block(Network::Bitcoin).block_hash()
         };
-        for (rpc_hash, chain) in [
-            (wrong, vec![version()]),
-            (genesis, vec![version(), chain_network(wrong)]),
-        ] {
-            let error = run(
-                Request::new(network, Some(0), Some(0))?,
-                vec![hash(0, rpc_hash)],
-                chain,
-            )?
-            .err()
-            .context("expected network failure")?;
-            assert!(error.to_string().contains("not on the requested network"));
-        }
+        let error = run(
+            Request::new(network, Some(0), Some(0))?,
+            vec![hash(0, wrong)],
+        )?
+        .err()
+        .context("expected network failure")?;
+        assert!(error.to_string().contains("not on the requested network"));
     }
     assert!(Request::new(Network::Bitcoin, Some(2), Some(1)).is_err());
     assert!(Request::new(Network::Testnet, None, None).is_err());
@@ -292,12 +225,7 @@ fn retrieves_context_for_each_requested_network() -> Result<()> {
             ),
             hash(0, genesis),
         ];
-        let chain = vec![
-            version(),
-            chain_network(genesis),
-            step("blockchain.block.header", json!([0]), json!(raw)),
-        ];
-        let context = run(Request::new(network, None, Some(0))?, rpc, chain)??;
+        let context = run(Request::new(network, None, Some(0))?, rpc)??;
         assert_eq!(context.network(), network);
         assert_eq!(context.first().hash(), genesis);
         assert_eq!(context.last().hash(), genesis);
@@ -306,7 +234,7 @@ fn retrieves_context_for_each_requested_network() -> Result<()> {
 }
 
 #[test]
-fn rejects_unavailable_state_malformed_headers_reorgs_and_disagreement() -> Result<()> {
+fn rejects_unavailable_state_malformed_headers_and_reorgs() -> Result<()> {
     let header = genesis_block(Network::Bitcoin).header;
     let genesis = header.block_hash();
     let raw = serialize(&header).as_hex().to_string();
@@ -317,8 +245,6 @@ fn rejects_unavailable_state_malformed_headers_reorgs_and_disagreement() -> Resu
         "bad-header",
         "wrong-header",
         "reorg",
-        "disagreement",
-        "chain-behind",
     ] {
         let header_reply = match case {
             "bad-header" => json!("ab".repeat(81)),
@@ -334,7 +260,6 @@ fn rejects_unavailable_state_malformed_headers_reorgs_and_disagreement() -> Resu
             hash(0, genesis),
             step("getblockheader", json!([genesis, false]), header_reply),
         ];
-        let mut chain = vec![version(), chain_network(genesis)];
         if !matches!(case, "bad-header" | "wrong-header") {
             let reply = match case {
                 "unavailable" => json!({"error":{"code":-1,"message":"secret node details"}}),
@@ -346,29 +271,10 @@ fn rejects_unavailable_state_malformed_headers_reorgs_and_disagreement() -> Resu
             };
             rpc.push(("getutreexoroots", json!([genesis]), reply));
         }
-        if matches!(case, "reorg" | "disagreement" | "chain-behind") {
-            rpc.push(hash(
-                0,
-                if case == "reorg" {
-                    BlockHash::all_zeros()
-                } else {
-                    genesis
-                },
-            ));
+        if case == "reorg" {
+            rpc.push(hash(0, BlockHash::all_zeros()));
         }
-        if matches!(case, "disagreement" | "chain-behind") {
-            let reply = if case == "chain-behind" {
-                json!({"error":{"code":-1,"message":"height unavailable"}})
-            } else {
-                json!({"result": serialize(&genesis_block(Network::Testnet).header).as_hex().to_string()})
-            };
-            chain.push(("blockchain.block.header", json!([0]), reply));
-        }
-        let result = run(
-            Request::new(Network::Bitcoin, Some(0), Some(0))?,
-            rpc,
-            chain,
-        )?;
+        let result = run(Request::new(Network::Bitcoin, Some(0), Some(0))?, rpc)?;
         let error = result
             .err()
             .with_context(|| format!("{case} was accepted"))?;
@@ -377,8 +283,6 @@ fn rejects_unavailable_state_malformed_headers_reorgs_and_disagreement() -> Resu
             "large-state" => "Utreexo leaf count exceeds supported position range",
             "bad-header" | "wrong-header" => "cannot retrieve RPC header",
             "reorg" => "RPC chain changed",
-            "disagreement" => "RPC and Electrum disagree",
-            "chain-behind" => "cannot retrieve Electrum header",
             _ => bail!("unknown fixture case"),
         };
         assert!(error.to_string().contains(expected), "{case}: {error:#}");

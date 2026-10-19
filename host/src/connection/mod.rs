@@ -1,3 +1,7 @@
+#[expect(
+    dead_code,
+    reason = "Electrum connection code is retained for future operations"
+)]
 pub mod electrum;
 mod header;
 mod json_rpc;

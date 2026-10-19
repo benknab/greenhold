@@ -1,10 +1,9 @@
-use crate::connection::{electrum, utreexod_rpc};
+use crate::connection::utreexod_rpc;
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand};
 use url::Url;
 use walledcity_core::network::SupportedNetwork;
 
-pub const DEFAULT_ELECTRUM: &str = "tls://electrum.hospitablealpaca.com:50002";
 pub const DEFAULT_RPC: &str = "https://utreexo.hospitablealpaca.com/";
 
 #[derive(Debug, Parser)]
@@ -20,7 +19,7 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Fetch headers and historical Utreexo state from the chosen network's nodes.
+    /// Fetch headers and historical Utreexo state from the chosen Utreexod RPC node.
     Context(ContextOptions),
 }
 
@@ -42,12 +41,11 @@ pub struct ContextOptions {
 }
 
 #[derive(Debug, Args)]
+#[expect(
+    clippy::struct_field_names,
+    reason = "field names match the public RPC flags and Clap argument dependencies"
+)]
 pub struct ConnectionConfig {
-    /// Electrum server: tcp://HOST:PORT for plaintext, tls://HOST:PORT for TLS.
-    /// ssl:// is an alias for the same TLS connection.
-    #[arg(long, value_name = "ENDPOINT", default_value = DEFAULT_ELECTRUM)]
-    pub electrum: electrum::Endpoint,
-
     /// Custom HTTP(S) RPC URL. Requires both Utreexod RPC auth flags.
     /// If omitted, use the anonymous public HTTPS guard on port 443.
     #[arg(long, value_name = "URL", value_parser = rpc_url,

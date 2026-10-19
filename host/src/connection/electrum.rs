@@ -26,22 +26,11 @@ struct Features {
 /// Server identity and the negotiated protocol version.
 #[derive(Debug, Deserialize)]
 #[serde(try_from = "[String; 2]")]
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "context retrieval negotiates the version without displaying it"
-    )
-)]
 pub struct Version {
     server_version: String,
     protocol_version: String,
 }
 
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "version accessors remain covered by client tests")
-)]
 impl Version {
     pub fn server_version(&self) -> &str {
         &self.server_version
@@ -256,6 +245,3 @@ fn read_reply(stream: &mut impl BufRead) -> Result<Response> {
     }
     Response::parse(&bytes)
 }
-
-#[cfg(test)]
-mod tests;

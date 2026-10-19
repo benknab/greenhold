@@ -1,4 +1,4 @@
-use crate::connection::{electrum, utreexod_rpc};
+use crate::connection::utreexod_rpc;
 use anyhow::{Context as _, Result, bail};
 use bitcoin::{Network, blockdata::constants::genesis_block};
 use walledcity_core::context::{AccumulatorState, BlockEndpoint, ChainContext};
@@ -27,17 +27,11 @@ impl Request {
     }
 }
 
-/// Retrieve public state from the caller's chosen stock nodes on this run.
-/// Electrum checks the chain endpoints; the RPC node supplies the roots bound
-/// to the last block. This function never accepts a saved context as authority.
-pub fn fetch(
-    request: Request,
-    endpoint: &electrum::Endpoint,
-    config: &utreexod_rpc::Config,
-) -> Result<ChainContext> {
+/// Retrieve public state from the caller's chosen stock Utreexod node on this run.
+/// The RPC node supplies headers, height bindings, and roots at the last block.
+/// This function never accepts a saved context as authority.
+pub fn fetch(request: Request, config: &utreexod_rpc::Config) -> Result<ChainContext> {
     let mut rpc = utreexod_rpc::Client::new(config);
-    let mut chain = electrum::Client::connect(endpoint)?;
-    chain.server_version()?;
     let genesis = genesis_block(Network::from(request.network)).block_hash();
     if rpc.block_hash(0)? != genesis {
         bail!(
@@ -45,15 +39,8 @@ pub fn fetch(
             request.network
         );
     }
-    if chain.genesis_hash()? != genesis {
-        bail!(
-            "Electrum node is not on the requested network ({})",
-            request.network
-        );
-    }
-
     // Pin the tip's hash and height from one RPC snapshot. Never replace it with a
-    // later tip or Electrum's tip while retrieving this context.
+    // later tip while retrieving this context.
     let (last_height, tip) = if let Some(height) = request.last {
         (height, None)
     } else {
@@ -98,9 +85,9 @@ pub fn fetch(
 
     // Read the height bindings again after fetching roots. Tip advances are fine;
     // an observed reorg of either requested endpoint is not.
-    crosscheck(&mut rpc, &mut chain, &first)?;
+    crosscheck(&mut rpc, &first)?;
     if first.height() != last.height() {
-        crosscheck(&mut rpc, &mut chain, &last)?;
+        crosscheck(&mut rpc, &last)?;
     }
     ChainContext::new(first, last, state)
 }
@@ -119,26 +106,10 @@ fn endpoint_block(
     BlockEndpoint::new(network, height, header)
 }
 
-fn crosscheck(
-    rpc: &mut utreexod_rpc::Client<'_>,
-    chain: &mut electrum::Client,
-    block: &BlockEndpoint,
-) -> Result<()> {
+fn crosscheck(rpc: &mut utreexod_rpc::Client<'_>, block: &BlockEndpoint) -> Result<()> {
     if rpc.block_hash(block.height())? != block.hash() {
         bail!(
             "RPC chain changed at height {} during context retrieval",
-            block.height()
-        );
-    }
-    let header = chain.block_header(block.height()).with_context(|| {
-        format!(
-            "cannot retrieve Electrum header at height {}",
-            block.height()
-        )
-    })?;
-    if header != *block.header() {
-        bail!(
-            "RPC and Electrum disagree on the header at height {}",
             block.height()
         );
     }

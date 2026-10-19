@@ -12,10 +12,6 @@ fn context_defaults_and_explicit_connections() -> Result<()> {
     assert_eq!(options.last_height, None);
     assert_eq!(options.first_height, None);
     assert_eq!(Network::from(options.network), Network::Bitcoin);
-    assert_eq!(
-        options.connections.electrum.socket_url().url().as_str(),
-        DEFAULT_ELECTRUM
-    );
     assert!(options.connections.utreexod_rpc.is_none());
     options.connections.rpc_config()?;
 
@@ -27,8 +23,6 @@ fn context_defaults_and_explicit_connections() -> Result<()> {
         "100",
         "--network",
         "regtest",
-        "--electrum",
-        "tcp://[::1]:50001",
         "--utreexod-rpc",
         "http://localhost:8334/",
         "--utreexod-rpc-user",
@@ -39,10 +33,6 @@ fn context_defaults_and_explicit_connections() -> Result<()> {
     assert_eq!(options.last_height, Some(200));
     assert_eq!(options.first_height, Some(100));
     assert_eq!(Network::from(options.network), Network::Regtest);
-    assert_eq!(
-        options.connections.electrum.socket_url().url().as_str(),
-        "tcp://[::1]:50001"
-    );
     assert_eq!(
         options.connections.utreexod_rpc.as_ref().map(Url::as_str),
         Some("http://localhost:8334/")
@@ -89,7 +79,6 @@ fn incomplete_auth_and_invalid_values_fail_during_parsing() -> Result<()> {
     for (flag, value) in [
         ("--network", "testnet"),
         ("--network", "testnet4"),
-        ("--electrum", "https://localhost:50002"),
         ("--first-height", "4294967296"),
     ] {
         assert!(Cli::try_parse_from(["host", "context", flag, value]).is_err());

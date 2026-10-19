@@ -7,7 +7,7 @@ use bitcoin::{
     hex::FromHex,
 };
 use serde_json::{Value, json};
-use support::{MINING_ADDRESS, Node, context, image, rejection, success, wait_for};
+use support::{MINING_ADDRESS, Node, context, image, rejection, success};
 
 // Run explicitly with `cargo regtest`. Missing Docker is a failure, never a skip.
 #[test]
@@ -24,56 +24,28 @@ fn historical_context_uses_stock_nodes_and_fails_closed() -> Result<()> {
         None,
     )?;
     bridge.rpc("generate", &json!([8]))?;
-    // A bridge cannot also host watch-only Electrum. Use a separate validating node.
-    let chain = Node::start(
-        image.clone(),
-        &[
-            "--watchonlywallet".into(),
-            "--electrumlisteners=0.0.0.0:50001".into(),
-            "--tlselectrumlisteners=127.0.0.1:50002".into(),
-        ],
-        Some(&bridge),
-    )?;
-    chain.wait_for_block(&bridge, 8)?;
-    let historical_hash = bridge.rpc("getblockhash", &json!([6]))?;
-    let historical_header = bridge.rpc("getblockheader", &json!([historical_hash, false]))?;
-    wait_for("Electrum historical header", || {
-        Ok(chain.electrum("blockchain.block.header", &json!([6]))? == historical_header)
-    })?;
-
-    let historical = success(&context(
-        &bridge,
-        &chain,
-        "regtest",
-        &["6", "--first-height", "3"],
-    )?)?;
+    let historical = success(&context(&bridge, "regtest", &["6", "--first-height", "3"])?)?;
     assert_context(&bridge, &historical, 3, 6)?;
-    let single = success(&context(&bridge, &chain, "regtest", &["6"])?)?;
+    let single = success(&context(&bridge, "regtest", &["6"])?)?;
     assert_context(&bridge, &single, 6, 6)?;
     bridge.rpc("generate", &json!([3]))?;
-    chain.wait_for_block(&bridge, 11)?;
     assert_eq!(
-        success(&context(
-            &bridge,
-            &chain,
-            "regtest",
-            &["6", "--first-height", "3"]
-        )?)?,
+        success(&context(&bridge, "regtest", &["6", "--first-height", "3"])?)?,
         historical
     );
-    let tip = success(&context(&bridge, &chain, "regtest", &[])?)?;
+    let tip = success(&context(&bridge, "regtest", &[])?)?;
     assert_context(&bridge, &tip, 11, 11)?;
     assert_ne!(historical["context"]["state"], tip["context"]["state"]);
 
     rejection(
-        &context(&bridge, &chain, "bitcoin", &["6"])?,
+        &context(&bridge, "bitcoin", &["6"])?,
         "not on the requested network",
     );
     // Same chain, but deliberately no accumulator index. The application must fail.
     let unindexed = Node::start(image, &["--noutreexo".into()], Some(&bridge))?;
     unindexed.wait_for_block(&bridge, 11)?;
     rejection(
-        &context(&unindexed, &chain, "regtest", &["6"])?,
+        &context(&unindexed, "regtest", &["6"])?,
         "cannot retrieve Utreexo state",
     );
     Ok(())

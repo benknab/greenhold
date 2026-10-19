@@ -1,8 +1,6 @@
 use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 use std::{
-    io::{BufRead, BufReader, Write},
-    net::TcpStream,
     process::{Command, Output, Stdio},
     thread,
     time::{Duration, Instant},
@@ -23,7 +21,6 @@ pub fn image() -> Result<GenericImage> {
             .with_data(include_str!("entrypoint.sh"), "entrypoint.sh")
             .build_image()?
             .with_exposed_port(18334.tcp())
-            .with_exposed_port(50001.tcp())
             .with_wait_for(WaitFor::message_on_stdout("RPC server listening")),
     )
 }
@@ -32,7 +29,6 @@ pub fn image() -> Result<GenericImage> {
 pub struct Node {
     pub container: Container<GenericImage>,
     pub rpc_url: String,
-    pub electrum_address: String,
     agent: ureq::Agent,
 }
 
@@ -51,11 +47,9 @@ impl Node {
             "http://{host}:{}/",
             container.get_host_port_ipv4(18334.tcp())?
         );
-        let electrum_address = format!("{host}:{}", container.get_host_port_ipv4(50001.tcp())?);
         let node = Self {
             container,
             rpc_url,
-            electrum_address,
             agent: ureq::Agent::config_builder()
                 .timeout_global(Some(Duration::from_secs(3)))
                 .build()
@@ -92,27 +86,6 @@ impl Node {
         reply.get("result").cloned().context("missing RPC result")
     }
 
-    pub fn electrum(&self, method: &str, params: &Value) -> Result<Value> {
-        let socket = TcpStream::connect(&self.electrum_address)?;
-        socket.set_read_timeout(Some(Duration::from_secs(3)))?;
-        socket.set_write_timeout(Some(Duration::from_secs(3)))?;
-        writeln!(
-            &socket,
-            "{}",
-            json!({"id":1,"method":method,"params":params})
-        )?;
-        let mut line = String::new();
-        BufReader::new(socket).read_line(&mut line)?;
-        let reply: Value = serde_json::from_str(&line)?;
-        if !reply["error"].is_null() {
-            bail!("test Electrum {method}: {}", reply["error"]);
-        }
-        reply
-            .get("result")
-            .cloned()
-            .context("missing Electrum result")
-    }
-
     pub fn wait_for_block(&self, bridge: &Self, height: u32) -> Result<()> {
         let expected = bridge.rpc("getblockhash", &json!([height]))?;
         wait_for("matching node block", || {
@@ -141,7 +114,7 @@ pub fn wait_for(description: &str, mut ready: impl FnMut() -> Result<bool>) -> R
     }
 }
 
-pub fn context(rpc: &Node, electrum: &Node, network: &str, heights: &[&str]) -> Result<Output> {
+pub fn context(rpc: &Node, network: &str, heights: &[&str]) -> Result<Output> {
     let mut child = Command::new(env!("CARGO_BIN_EXE_walledcity-host"))
         .args([
             "context",
@@ -153,8 +126,6 @@ pub fn context(rpc: &Node, electrum: &Node, network: &str, heights: &[&str]) -> 
             "test",
             "--utreexod-rpc-password",
             "test",
-            "--electrum",
-            &format!("tcp://{}", electrum.electrum_address),
         ])
         .args(heights)
         .stdout(Stdio::piped())

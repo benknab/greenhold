@@ -28,7 +28,7 @@ fn run(cli: cli::Cli) -> Result<()> {
                 options.last_height,
             )?;
             let rpc = options.connections.rpc_config()?;
-            let context = context::fetch(request, &options.connections.electrum, &rpc)?;
+            let context = context::fetch(request, &rpc)?;
             println!(
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
