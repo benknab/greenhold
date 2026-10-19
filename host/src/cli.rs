@@ -40,7 +40,7 @@ pub struct ContextOptions {
     #[arg(long, default_value = "bitcoin")]
     pub network: SupportedNetwork,
 
-    /// Last block height T. Defaults to the Utreexod RPC tip, resolved once.
+    /// Last block height T. Defaults to the RPC tip (the proof's block for coin).
     pub last_height: Option<u32>,
 
     /// First block height X. Defaults to T for a single-block context.

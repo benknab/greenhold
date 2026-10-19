@@ -4,7 +4,7 @@ use bitcoin::{BlockHash, Network, block::Header, blockdata::constants::genesis_b
 use walledcity_core::context::{AccumulatorState, BlockEndpoint, ChainContext};
 use walledcity_core::network::SupportedNetwork;
 
-/// Lookup heights. An omitted last height selects the RPC tip once during retrieval.
+/// Lookup heights. An omitted last height uses the selected block or the RPC tip.
 #[derive(Clone, Copy, Debug)]
 pub struct Input {
     network: SupportedNetwork,
@@ -31,6 +31,25 @@ impl Input {
 /// The RPC node supplies headers, height bindings, and roots at the last block.
 /// This function never accepts a saved context as authority.
 pub fn fetch(input: Input, config: &utreexod_rpc::Config) -> Result<ChainContext> {
+    fetch_selected(input, config, None)
+}
+
+/// Retrieve context for an exact proof block, treating its hash only as a lookup input.
+/// The node supplies its height, header, and roots. Later tip changes do not replace it.
+/// An explicit last height must agree; an omitted first height defaults to this block.
+pub fn fetch_at(
+    input: Input,
+    config: &utreexod_rpc::Config,
+    block: BlockHash,
+) -> Result<ChainContext> {
+    fetch_selected(input, config, Some(block))
+}
+
+fn fetch_selected(
+    input: Input,
+    config: &utreexod_rpc::Config,
+    selected: Option<BlockHash>,
+) -> Result<ChainContext> {
     let mut rpc = utreexod_rpc::Client::new(config);
     let genesis = genesis_block(Network::from(input.network)).block_hash();
     if rpc.block_hash(0)? != genesis {
@@ -39,9 +58,11 @@ pub fn fetch(input: Input, config: &utreexod_rpc::Config) -> Result<ChainContext
             input.network
         );
     }
-    // Pin the tip's hash and height from one RPC snapshot. Never replace it with a
-    // later tip while retrieving this context.
-    let (last_height, tip) = if let Some(height) = input.last {
+    // Never replace a selected block with a later tip during retrieval.
+    let (last_height, pinned) = if let Some(hash) = selected {
+        let block = selected_endpoint(&mut rpc, input, hash)?;
+        (block.height(), Some(block))
+    } else if let Some(height) = input.last {
         (height, None)
     } else {
         let block = rpc
@@ -59,17 +80,17 @@ pub fn fetch(input: Input, config: &utreexod_rpc::Config) -> Result<ChainContext
     if first_height > last_height {
         bail!("first height must not exceed last height");
     }
-    let first = if let Some(tip) = &tip
+    let first = if let Some(block) = &pinned
         && first_height == last_height
     {
-        tip.clone()
+        block.clone()
     } else {
         endpoint_block(&mut rpc, input.network.into(), first_height)?
     };
     let last = if first_height == last_height {
         first.clone()
-    } else if let Some(tip) = tip {
-        tip
+    } else if let Some(block) = pinned {
+        block
     } else {
         endpoint_block(&mut rpc, input.network.into(), last_height)?
     };
@@ -82,13 +103,29 @@ pub fn fetch(input: Input, config: &utreexod_rpc::Config) -> Result<ChainContext
     })?;
     let state = AccumulatorState::new(roots.num_leaves, roots.roots)?;
 
-    // Read the height bindings again after fetching roots. Tip advances are fine;
-    // an observed reorg of either requested endpoint is not.
-    crosscheck(&mut rpc, &first)?;
-    if first.height() != last.height() {
-        crosscheck(&mut rpc, &last)?;
-    }
     ChainContext::new(first, last, state)
+}
+
+fn selected_endpoint(
+    rpc: &mut utreexod_rpc::Client<'_>,
+    input: Input,
+    hash: BlockHash,
+) -> Result<BlockEndpoint> {
+    let utreexod_rpc::BlockHeaderResponse::Verbose(location) = rpc.block_header(&hash, true)?
+    else {
+        bail!("expected a verbose RPC block header");
+    };
+    if location.hash != hash {
+        bail!("RPC block location does not match requested hash");
+    }
+    if input.last.is_some_and(|height| height != location.height) {
+        bail!("proof block height does not match requested last height");
+    }
+    BlockEndpoint::new(
+        input.network.into(),
+        location.height,
+        block_header(rpc, &hash)?,
+    )
 }
 
 fn endpoint_block(
@@ -112,16 +149,6 @@ fn block_header(rpc: &mut utreexod_rpc::Client<'_>, hash: &BlockHash) -> Result<
         bail!("RPC header does not match requested block hash");
     }
     Ok(header)
-}
-
-fn crosscheck(rpc: &mut utreexod_rpc::Client<'_>, block: &BlockEndpoint) -> Result<()> {
-    if rpc.block_hash(block.height())? != block.hash() {
-        bail!(
-            "RPC chain changed at height {} during context retrieval",
-            block.height()
-        );
-    }
-    Ok(())
 }
 
 #[cfg(test)]

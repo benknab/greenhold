@@ -6,13 +6,13 @@ use walledcity_core::{
     context::ChainContext,
 };
 
-/// All state is fetched on this run. A proof cannot select a substitute context.
+/// Fetch a tip proof before its exact public context. The proof's block hash is a
+/// lookup input; the node supplies and checks the context on this run.
 pub fn fetch(
     outpoint: OutPoint,
     input: context::Input,
     config: &utreexod_rpc::Config,
 ) -> Result<(ChainContext, CoinWitness)> {
-    let context = context::fetch(input, config)?;
     let mut rpc = utreexod_rpc::Client::new(config);
     let output = rpc
         .tx_out(&outpoint.txid, outpoint.vout, false)?
@@ -40,17 +40,10 @@ pub fn fetch(
     let proof = rpc.prove_utxo_chain_tip_inclusion(&[outpoint.txid], &[outpoint.vout]).context(
         "cannot retrieve coin membership proof; coin must be unspent and node needs a proof index",
     )?;
+    let proved_at = proof.proved_at_hash;
     let witness = bind(coin, proof)?;
+    let context = context::fetch_at(input, config, proved_at)?;
     witness.verify(&context, outpoint)?;
-    for (height, hash) in [
-        (creation_height, creation_hash),
-        (context.first().height(), context.first().hash()),
-        (context.last().height(), context.last().hash()),
-    ] {
-        if rpc.block_hash(height)? != hash {
-            bail!("RPC chain changed during coin retrieval");
-        }
-    }
     Ok((context, witness))
 }
 

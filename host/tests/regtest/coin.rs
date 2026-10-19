@@ -1,4 +1,4 @@
-use crate::support::{Node, command, image, rejection, success};
+use crate::support::{Node, command, context, image, rejection, success};
 use anyhow::{Context, Result};
 use bitcoin::{
     Address, Amount, Network, OutPoint, ScriptBuf, Transaction, TxIn, TxOut, Witness,
@@ -91,9 +91,10 @@ fn single_coin_membership_uses_real_transactions_and_rejects_spent_coins() -> Re
     );
 
     node.rpc("generate", &json!([1]))?;
+    verify_after_tip_advance(&node, &report, outpoint)?;
     rejection(
         &command(&node, "regtest", "coin", &[&input, "433"])?,
-        "proof block does not match",
+        "proof block height does not match requested last height",
     );
     let report = success(&command(
         &node,
@@ -118,6 +119,19 @@ fn single_coin_membership_uses_real_transactions_and_rejects_spent_coins() -> Re
         &[&survivor.to_string()],
     )?)?;
     assert_coin(&report, &funding, survivor, 435)?;
+    Ok(())
+}
+
+fn verify_after_tip_advance(node: &Node, report: &Value, outpoint: OutPoint) -> Result<()> {
+    // Fetch fresh public state at the proof's block after the node has advanced.
+    let historical = success(&context(node, "regtest", &["433"])?)?;
+    let fetched: ChainContext = serde_json::from_value(historical["context"].clone())?;
+    let witness: CoinWitness = serde_json::from_value(report["witness"].clone())?;
+    witness.verify(&fetched, outpoint)?;
+    assert_eq!(
+        historical["last_block_hash"],
+        report["witness"]["proved_at"]
+    );
     Ok(())
 }
 

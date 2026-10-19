@@ -24,20 +24,19 @@ fn fixture() -> Result<(OutPoint, Vec<Step>)> {
     let outpoint = OutPoint::new(transaction.compute_txid(), 0);
     let coin = Coin::new(outpoint, hash, 10, true, transaction.output[0].clone())?;
     let leaf = sha256d::Hash::from_byte_array(coin.leaf_hash());
+    let mut proof_header = block.header;
+    proof_header.prev_blockhash = hash;
+    proof_header.time += 1;
+    while proof_header.validate_pow(proof_header.target()).is_err() {
+        proof_header.nonce = proof_header
+            .nonce
+            .checked_add(1)
+            .context("nonce exhausted")?;
+    }
+    let proof_hash = proof_header.block_hash();
+    // The output snapshot is at 20, but the proof selects 21. All context reads
+    // use that proof's hash, with no later tip lookup or height-binding recheck.
     let steps = vec![
-        ("getblockhash", json!([0]), json!(hash)),
-        ("getbestblock", json!([]), json!({"hash":hash,"height":20})),
-        (
-            "getblockheader",
-            json!([hash, false]),
-            json!(serialize(&block.header).as_hex().to_string()),
-        ),
-        (
-            "getutreexoroots",
-            json!([hash]),
-            json!({"numleaves":1,"roots":[coin.leaf_hash().as_hex().to_string()]}),
-        ),
-        ("getblockhash", json!([20]), json!(hash)),
         (
             "gettxout",
             json!([outpoint.txid, 0, false]),
@@ -53,11 +52,24 @@ fn fixture() -> Result<(OutPoint, Vec<Step>)> {
         (
             "proveutxochaintipinclusion",
             json!([[outpoint.txid], [0], 1]),
-            json!({"provedathash":hash,"prooftargets":[0],"proofhashes":[],"hashesproven":[leaf]}),
+            json!({"provedathash":proof_hash,"prooftargets":[0],"proofhashes":[],"hashesproven":[leaf]}),
         ),
-        ("getblockhash", json!([10]), json!(hash)),
-        ("getblockhash", json!([20]), json!(hash)),
-        ("getblockhash", json!([20]), json!(hash)),
+        ("getblockhash", json!([0]), json!(hash)),
+        (
+            "getblockheader",
+            json!([proof_hash, true]),
+            json!({"hash":proof_hash,"height":21}),
+        ),
+        (
+            "getblockheader",
+            json!([proof_hash, false]),
+            json!(serialize(&proof_header).as_hex().to_string()),
+        ),
+        (
+            "getutreexoroots",
+            json!([proof_hash]),
+            json!({"numleaves":1,"roots":[coin.leaf_hash().as_hex().to_string()]}),
+        ),
     ];
     Ok((outpoint, steps))
 }
@@ -94,86 +106,85 @@ fn run(outpoint: OutPoint, steps: Vec<Step>) -> Result<Result<(ChainContext, Coi
 }
 
 #[test]
-fn retrieval_checks_coin_proof_and_final_chain_bindings() -> Result<()> {
+fn retrieval_checks_coin_and_proof_at_the_selected_block() -> Result<()> {
     let (outpoint, steps) = fixture()?;
     let (context, witness) = run(outpoint, steps.clone())??;
+    assert_eq!(context.first().height(), 21);
+    assert_eq!(context.last().height(), 21);
+    assert_eq!(json!(context.last().hash()), steps[3].2["provedathash"]);
     assert_eq!(witness.coin().output().value.to_sat(), 5_000_000_000);
     witness.verify(&context, outpoint)?;
-    for index in [9, 10, 11] {
-        let mut changed = steps.clone();
-        changed[index].2 = json!(BlockHash::all_zeros());
-        changed.truncate(index + 1);
-        let error = run(outpoint, changed)?.err().context("reorg accepted")?;
-        assert!(format!("{error:#}").contains("chain changed during coin retrieval"));
-    }
-    for (index, field, value, reason) in [
+    for (index, field, value, length, reason) in [
         (
-            6,
+            5,
             "hash",
             json!(BlockHash::all_zeros()),
+            6,
             "location does not match",
         ),
         (
-            8,
-            "provedathash",
+            1,
+            "hash",
             json!(BlockHash::all_zeros()),
-            "proof block does not match",
+            2,
+            "location does not match",
         ),
         (
-            8,
+            3,
             "hashesproven",
             json!([BlockHash::all_zeros()]),
+            4,
             "reconstructed coin",
         ),
-        (8, "prooftargets", json!([1]), "outside occupied forest"),
+        (3, "prooftargets", json!([1]), 8, "outside occupied forest"),
     ] {
         let mut changed = steps.clone();
         changed[index].2[field] = value;
-        changed.truncate(index + 1);
+        changed.truncate(length);
         let error = run(outpoint, changed)?
             .err()
             .context("bad RPC data accepted")?;
         assert!(format!("{error:#}").contains(reason), "{error:#}");
     }
     let mut changed = steps.clone();
-    changed[3].2["roots"] = json!(["00".repeat(32)]);
-    changed.truncate(9);
+    changed[7].2["roots"] = json!(["00".repeat(32)]);
+    changed.truncate(8);
     let error = run(outpoint, changed)?
         .err()
         .context("wrong roots accepted")?;
     assert!(format!("{error:#}").contains("membership mismatch"));
     for (replacement, reason, length) in [
-        (Value::Null, "absent from the confirmed UTXO set", 6),
+        (Value::Null, "absent from the confirmed UTXO set", 1),
         (
             {
-                let mut value = steps[5].2.clone();
+                let mut value = steps[0].2.clone();
                 value["value"] = json!(21_000_001);
                 value
             },
             "coin amount or script exceeds Bitcoin limits",
-            8,
+            3,
         ),
         (
             {
-                let mut value = steps[5].2.clone();
+                let mut value = steps[0].2.clone();
                 value["scriptPubKey"]["hex"] = json!("51".repeat(10001));
                 value
             },
             "coin amount or script exceeds Bitcoin limits",
-            8,
+            3,
         ),
         (
             {
-                let mut value = steps[5].2.clone();
+                let mut value = steps[0].2.clone();
                 value["confirmations"] = json!(22);
                 value
             },
             "confirmation count",
-            7,
+            2,
         ),
     ] {
         let mut changed = steps.clone();
-        changed[5].2 = replacement;
+        changed[0].2 = replacement;
         changed.truncate(length);
         let error = run(outpoint, changed)?
             .err()

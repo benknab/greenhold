@@ -105,8 +105,6 @@ fn rpc_tip_is_resolved_once_on_each_requested_network() -> Result<()> {
                 json!([block]),
                 json!({"numleaves":0,"roots":[]}),
             ),
-            hash(0, block),
-            hash(10, block),
         ];
         // The script permits exactly one tip query.
         let context = run(Input::new(network, Some(0), None)?, rpc)??;
@@ -114,29 +112,6 @@ fn rpc_tip_is_resolved_once_on_each_requested_network() -> Result<()> {
         assert_eq!(context.last().height(), 10);
         assert_eq!(context.last().hash(), block);
     }
-    Ok(())
-}
-
-#[test]
-fn selected_tip_reorg_fails() -> Result<()> {
-    let header = genesis_block(Network::Bitcoin).header;
-    let block = header.block_hash();
-    let raw = serialize(&header).as_hex().to_string();
-    let rpc = vec![
-        hash(0, block),
-        step("getbestblock", json!([]), json!({"hash":block,"height":0})),
-        step("getblockheader", json!([block, false]), json!(raw)),
-        step(
-            "getutreexoroots",
-            json!([block]),
-            json!({"numleaves":0,"roots":[]}),
-        ),
-        hash(0, BlockHash::all_zeros()),
-    ];
-    let error = run(Input::new(Network::Bitcoin, None, None)?, rpc)?
-        .err()
-        .context("expected retrieval failure")?;
-    assert!(error.to_string().contains("RPC chain changed"));
     Ok(())
 }
 
@@ -160,7 +135,7 @@ fn rejects_wrong_networks_before_retrieving_state() -> Result<()> {
 }
 
 #[test]
-fn rejects_unavailable_state_malformed_headers_and_reorgs() -> Result<()> {
+fn rejects_unavailable_state_and_malformed_headers() -> Result<()> {
     let header = genesis_block(Network::Bitcoin).header;
     let genesis = header.block_hash();
     let raw = serialize(&header).as_hex().to_string();
@@ -170,7 +145,6 @@ fn rejects_unavailable_state_malformed_headers_and_reorgs() -> Result<()> {
         "large-state",
         "bad-header",
         "wrong-header",
-        "reorg",
     ] {
         let header_reply = match case {
             "bad-header" => json!("ab".repeat(81)),
@@ -197,9 +171,6 @@ fn rejects_unavailable_state_malformed_headers_and_reorgs() -> Result<()> {
             };
             rpc.push(("getutreexoroots", json!([genesis]), reply));
         }
-        if case == "reorg" {
-            rpc.push(hash(0, BlockHash::all_zeros()));
-        }
         let result = run(Input::new(Network::Bitcoin, Some(0), Some(0))?, rpc)?;
         let error = result
             .err()
@@ -209,7 +180,6 @@ fn rejects_unavailable_state_malformed_headers_and_reorgs() -> Result<()> {
             "bad-roots" => "Utreexo root count does not match leaf count",
             "large-state" => "Utreexo leaf count exceeds supported position range",
             "bad-header" | "wrong-header" => "cannot retrieve RPC header",
-            "reorg" => "RPC chain changed",
             _ => bail!("unknown fixture case"),
         };
         assert!(error.to_string().contains(expected), "{case}: {error:#}");
