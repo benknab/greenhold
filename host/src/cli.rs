@@ -1,10 +1,10 @@
-use crate::connection::{electrum, peer, utreexod_rpc};
+use crate::connection::{electrum, utreexod_rpc};
 use anyhow::{Context, Result, bail};
+use bitcoin::Network;
 use clap::{Args, Parser, Subcommand};
 use url::Url;
 
 pub const DEFAULT_ELECTRUM: &str = "tls://electrum.hospitablealpaca.com:50002";
-pub const DEFAULT_UTREEXOD: &str = "bip324://utreexo.hospitablealpaca.com:8335";
 pub const DEFAULT_RPC: &str = "https://utreexo.hospitablealpaca.com/";
 
 #[derive(Debug, Parser)]
@@ -20,8 +20,25 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Read live node status over Electrum, Utreexod P2P, and Utreexod RPC.
-    Nodes(ConnectionConfig),
+    /// Fetch headers and historical Utreexo state from the chosen network's nodes.
+    Context(ContextOptions),
+}
+
+#[derive(Debug, Args)]
+pub struct ContextOptions {
+    /// Bitcoin network: mainnet, testnet, testnet4, signet, or regtest.
+    #[arg(long, default_value = "mainnet", value_parser = parse_network)]
+    pub network: Network,
+
+    /// Fixed last block height T. State is fetched at this block.
+    pub last_height: u32,
+
+    /// First block height X. Defaults to T for a single-block context.
+    #[arg(long, value_name = "HEIGHT")]
+    pub first_height: Option<u32>,
+
+    #[command(flatten)]
+    pub connections: ConnectionConfig,
 }
 
 #[derive(Debug, Args)]
@@ -34,14 +51,6 @@ pub struct ConnectionConfig {
         default_value = DEFAULT_ELECTRUM
     )]
     pub electrum: electrum::Endpoint,
-
-    /// Utreexod mainnet P2P: tcp://HOST:PORT for v1, bip324://HOST:PORT for encrypted v2.
-    #[arg(
-        long,
-        value_name = "ENDPOINT",
-        default_value = DEFAULT_UTREEXOD
-    )]
-    pub utreexod: peer::Endpoint,
 
     /// Custom HTTP(S) RPC URL. Requires both Utreexod RPC auth flags.
     /// If omitted, use the anonymous public HTTPS guard on port 443.
@@ -101,6 +110,13 @@ impl std::fmt::Debug for Redacted {
     }
 }
 
+fn parse_network(text: &str) -> Result<Network> {
+    if text == "mainnet" {
+        return Ok(Network::Bitcoin);
+    }
+    text.parse().context("invalid Bitcoin network")
+}
+
 fn rpc_user(text: &str) -> Result<String> {
     if text.is_empty() || text.contains(':') {
         bail!("RPC username must be nonempty and must not contain ':'");
@@ -133,57 +149,86 @@ fn rpc_url(text: &str) -> Result<Url> {
 mod tests {
     use super::*;
 
+    fn parse_context<const N: usize>(args: [&str; N]) -> Result<ContextOptions> {
+        let Command::Context(options) = Cli::try_parse_from(args)?.command;
+        Ok(options)
+    }
+
+    #[test]
+    fn context_network_selection() -> Result<()> {
+        for (name, network) in [
+            ("mainnet", Network::Bitcoin),
+            ("testnet", Network::Testnet),
+            ("testnet4", Network::Testnet4),
+            ("signet", Network::Signet),
+            ("regtest", Network::Regtest),
+        ] {
+            let options = parse_context(["host", "context", "100", "--network", name])?;
+            assert_eq!(options.network, network);
+        }
+        let options = parse_context(["host", "context", "100"])?;
+        assert_eq!(options.network, Network::Bitcoin);
+        assert!(Cli::try_parse_from(["host", "context", "100", "--network", "unknown"]).is_err());
+        Ok(())
+    }
+
     #[test]
     fn defaults_and_overrides() -> Result<()> {
-        let Command::Nodes(nodes) = Cli::try_parse_from(["host", "nodes"])?.command;
+        let options = parse_context(["host", "context", "100"])?;
         assert_eq!(
-            nodes.electrum.socket_url().url().host_str(),
+            options.connections.electrum.socket_url().url().host_str(),
             Some("electrum.hospitablealpaca.com")
         );
-        assert_eq!(nodes.electrum.socket_url().url().port(), Some(50002));
-        assert_eq!(nodes.electrum.socket_url().url().scheme(), "tls");
-        assert_eq!(nodes.utreexod.socket_url().url().port(), Some(8335));
-        assert!(nodes.utreexod_rpc.is_none());
-        assert!(nodes.rpc_config().is_ok());
-        let Command::Nodes(nodes) = Cli::try_parse_from([
+        assert_eq!(
+            options.connections.electrum.socket_url().url().port(),
+            Some(50002)
+        );
+        assert_eq!(
+            options.connections.electrum.socket_url().url().scheme(),
+            "tls"
+        );
+        assert!(options.connections.utreexod_rpc.is_none());
+        assert!(options.connections.rpc_config().is_ok());
+        let options = parse_context([
             "host",
-            "nodes",
+            "context",
+            "100",
             "--electrum",
             "tls://[::1]:50002",
-            "--utreexod",
-            "tcp://localhost:8335",
             "--utreexod-rpc",
             "http://localhost:8334/",
             "--utreexod-rpc-user",
             "user",
             "--utreexod-rpc-password",
             "secret-password",
-        ])?
-        .command;
+        ])?;
         assert_eq!(
-            nodes.electrum.socket_url().url().host(),
+            options.connections.electrum.socket_url().url().host(),
             Some(url::Host::Ipv6(std::net::Ipv6Addr::LOCALHOST))
         );
         assert_eq!(
-            nodes.utreexod.socket_url().url().host_str(),
-            Some("localhost")
-        );
-        assert_eq!(
-            nodes.utreexod_rpc.as_ref().map(Url::as_str),
+            options.connections.utreexod_rpc.as_ref().map(Url::as_str),
             Some("http://localhost:8334/")
         );
-        assert!(nodes.rpc_config().is_ok());
-        assert!(!format!("{nodes:?}").contains("secret-password"));
+        assert!(options.connections.rpc_config().is_ok());
+        assert!(!format!("{options:?}").contains("secret-password"));
         Ok(())
     }
 
     #[test]
     fn custom_rpc_requires_both_auth_flags_and_auth_requires_url() -> Result<()> {
         for args in [
-            vec!["host", "nodes", "--utreexod-rpc", "http://localhost/"],
             vec![
                 "host",
-                "nodes",
+                "context",
+                "100",
+                "--utreexod-rpc",
+                "http://localhost/",
+            ],
+            vec![
+                "host",
+                "context",
+                "100",
                 "--utreexod-rpc-user",
                 "user",
                 "--utreexod-rpc-password",
@@ -191,7 +236,8 @@ mod tests {
             ],
             vec![
                 "host",
-                "nodes",
+                "context",
+                "100",
                 "--utreexod-rpc",
                 "http://localhost/",
                 "--utreexod-rpc-user",
@@ -199,7 +245,8 @@ mod tests {
             ],
             vec![
                 "host",
-                "nodes",
+                "context",
+                "100",
                 "--utreexod-rpc",
                 "http://localhost/",
                 "--utreexod-rpc-password",
@@ -222,7 +269,8 @@ mod tests {
         for (user, password) in [("", "pass"), ("user", ""), ("user:name", "pass")] {
             let error = Cli::try_parse_from([
                 "host",
-                "nodes",
+                "context",
+                "100",
                 "--utreexod-rpc",
                 "http://localhost/",
                 "--utreexod-rpc-user",
@@ -244,9 +292,11 @@ mod tests {
             ("tls://localhost:50002", "tls"),
             ("ssl://localhost:50002", "ssl"),
         ] {
-            let Command::Nodes(config) =
-                Cli::try_parse_from(["host", "nodes", "--electrum", text])?.command;
-            assert_eq!(config.electrum.socket_url().url().scheme(), scheme);
+            let config = parse_context(["host", "context", "100", "--electrum", text])?;
+            assert_eq!(
+                config.connections.electrum.socket_url().url().scheme(),
+                scheme
+            );
         }
         for text in [
             "localhost:50002",
@@ -256,36 +306,7 @@ mod tests {
             "ssl://localhost",
             "tcp://ssl://localhost:50002",
         ] {
-            assert!(Cli::try_parse_from(["host", "nodes", "--electrum", text]).is_err());
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn p2p_requires_explicit_transport() -> Result<()> {
-        let Command::Nodes(nodes) =
-            Cli::try_parse_from(["host", "nodes", "--utreexod", "tcp://[::1]:8335"])?.command;
-        assert_eq!(
-            nodes.utreexod.socket_url().url().host(),
-            Some(url::Host::Ipv6(std::net::Ipv6Addr::LOCALHOST))
-        );
-        assert_eq!(nodes.utreexod.socket_url().url().port(), Some(8335));
-        let Command::Nodes(nodes) =
-            Cli::try_parse_from(["host", "nodes", "--utreexod", "bip324://[::1]:8335"])?.command;
-        assert_eq!(nodes.utreexod.socket_url().url().scheme(), "bip324");
-        for endpoint in [
-            "localhost:8335",
-            "[::1]:8335",
-            "ssl://localhost:8335",
-            "tls://localhost:8335",
-            "https://localhost:8335",
-            "tcp://localhost:0",
-            "tcp://localhost",
-            "tcp://tcp://localhost:8335",
-            "bip324://localhost",
-            "bip324://localhost:0",
-        ] {
-            assert!(Cli::try_parse_from(["host", "nodes", "--utreexod", endpoint]).is_err());
+            assert!(Cli::try_parse_from(["host", "context", "100", "--electrum", text]).is_err());
         }
         Ok(())
     }
@@ -309,7 +330,6 @@ mod tests {
                 endpoint.parse::<electrum::Endpoint>().is_err(),
                 "{endpoint}"
             );
-            assert!(endpoint.parse::<peer::Endpoint>().is_err(), "{endpoint}");
         }
         for url in [
             "ftp://host/",

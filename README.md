@@ -26,12 +26,10 @@ git clone https://github.com/benknab/walledcity.git
 cd walledcity
 rzup install rust 1.97.0
 rzup default rust 1.97.0
-cargo run --locked --release -- nodes
+cargo run --locked --release -- context 900000
 ```
 
-This builds the host and guest, then checks live node access.
-The default Utreexod P2P connection uses encrypted Bitcoin P2P v2 (`bip324://`).
-Use `--utreexod tcp://HOST:PORT` for v1. V2 connections fail rather than fall back to v1.
+This builds the host and guest, then retrieves public chain context from live nodes.
 `rzup default` selects the guest compiler for all projects on your machine.
 
 ## Development

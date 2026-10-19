@@ -9,13 +9,13 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-anyhow = "1"
+anyhow.workspace = true
 base64 = "0.22"
 bip324 = "0.11"
-bitcoin = { version = "0.32", features = ["serde"] }
+bitcoin.workspace = true
 clap = { version = "4", features = ["derive"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
-serde = { version = "1", features = ["derive"] }
+serde.workspace = true
 serde_json = { version = "1", features = ["arbitrary_precision", "raw_value"] }
 ureq = { version = "3", default-features = false, features = ["rustls"] }
 url = "2"

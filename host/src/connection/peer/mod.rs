@@ -138,6 +138,42 @@ mod tests {
     use std::{collections::VecDeque, net::TcpListener, thread};
 
     #[test]
+    fn endpoint_requires_explicit_transport() -> Result<()> {
+        let endpoint: Endpoint = "tcp://[::1]:8335".parse()?;
+        assert_eq!(
+            endpoint.socket_url().url().host(),
+            Some(url::Host::Ipv6(std::net::Ipv6Addr::LOCALHOST))
+        );
+        assert_eq!(endpoint.socket_url().url().port(), Some(8335));
+        let endpoint: Endpoint = "bip324://[::1]:8335".parse()?;
+        assert_eq!(endpoint.socket_url().url().scheme(), "bip324");
+        for text in [
+            "localhost:8335",
+            "[::1]:8335",
+            "ssl://localhost:8335",
+            "tls://localhost:8335",
+            "https://localhost:8335",
+            "tcp://localhost:0",
+            "tcp://localhost",
+            "tcp://tcp://localhost:8335",
+            "bip324://localhost",
+            "bip324://localhost:0",
+            "tcp://host:65536",
+            "tcp://::1:8335",
+            "tcp://user:password@host:123",
+            "tcp://user@host:123",
+            "tcp://[bad]:123",
+            "tcp://host:123/path",
+            "tcp://host:123?query",
+            "tcp://host:123#fragment",
+            "tcp:host:123",
+        ] {
+            assert!(text.parse::<Endpoint>().is_err(), "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
     fn handshake_leaves_transport_ready_for_an_operation() -> Result<()> {
         let listener = TcpListener::bind("127.0.0.1:0")?;
         let endpoint: Endpoint = format!("tcp://{}", listener.local_addr()?).parse()?;

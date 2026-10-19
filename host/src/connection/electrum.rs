@@ -1,9 +1,11 @@
 use super::{
     MAX_MESSAGE,
+    header::HeaderResponse,
     json_rpc::{Request, Response, ServerError},
     socket::{SocketUrl, connect_tcp},
 };
 use anyhow::{Context, Result, bail};
+use bitcoin::{BlockHash, block::Header};
 use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned, pki_types::ServerName};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::{
@@ -16,14 +18,30 @@ use url::{Host, Url};
 
 const PROTOCOL_VERSION: &str = "1.4";
 
+#[derive(Deserialize)]
+struct Features {
+    genesis_hash: BlockHash,
+}
+
 /// Server identity and the negotiated protocol version.
 #[derive(Debug, Deserialize)]
 #[serde(try_from = "[String; 2]")]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "context retrieval negotiates the version without displaying it"
+    )
+)]
 pub struct Version {
     server_version: String,
     protocol_version: String,
 }
 
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "version accessors remain covered by client tests")
+)]
 impl Version {
     pub fn server_version(&self) -> &str {
         &self.server_version
@@ -177,6 +195,16 @@ impl Client {
                 PROTOCOL_VERSION,
             ],
         )
+    }
+
+    pub fn genesis_hash(&mut self) -> Result<BlockHash> {
+        let features: Features = self.call("server.features", [] as [(); 0])?;
+        Ok(features.genesis_hash)
+    }
+
+    pub fn block_header(&mut self, height: u32) -> Result<Header> {
+        let HeaderResponse(header) = self.call("blockchain.block.header", [height])?;
+        Ok(header)
     }
 
     /// Send a request/response method and positional parameters. Subscriptions are unsupported.

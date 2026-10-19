@@ -1,10 +1,11 @@
 use super::{
     MAX_MESSAGE, TIMEOUT,
+    header::HeaderResponse,
     json_rpc::{Request, Response},
 };
 use anyhow::{Result, anyhow, bail};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use bitcoin::{BlockHash, hex::FromHex};
+use bitcoin::{BlockHash, block::Header, hex::FromHex};
 use serde::{Deserialize, Deserializer, Serialize, de::DeserializeOwned};
 use std::{fmt, io::Read};
 use ureq::{Agent, http::HeaderValue};
@@ -103,8 +104,27 @@ impl<'a> Client<'a> {
         }
     }
 
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "tip lookup is retained and tested for future coin discovery"
+        )
+    )]
     pub fn best_block_hash(&mut self) -> Result<BlockHash> {
         self.call("getbestblockhash", [] as [(); 0])
+    }
+
+    pub fn block_hash(&mut self, height: u32) -> Result<BlockHash> {
+        self.call("getblockhash", [height])
+    }
+
+    pub fn block_header(&mut self, block: &BlockHash) -> Result<Header> {
+        let HeaderResponse(header) = self.call("getblockheader", (block, false))?;
+        if header.block_hash() != *block {
+            bail!("RPC header does not match requested block hash");
+        }
+        Ok(header)
     }
 
     /// Request accumulator state at this exact block, rather than a moving tip.
