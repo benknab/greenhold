@@ -172,13 +172,7 @@ fn fixed_historical_endpoints_and_single_block_context() -> Result<()> {
 
 #[test]
 fn rejects_wrong_networks_before_retrieving_state() -> Result<()> {
-    for network in [
-        Network::Bitcoin,
-        Network::Testnet,
-        Network::Testnet4,
-        Network::Signet,
-        Network::Regtest,
-    ] {
+    for network in [Network::Bitcoin, Network::Signet, Network::Regtest] {
         let genesis = genesis_block(network).block_hash();
         let wrong = if network == Network::Bitcoin {
             genesis_block(Network::Testnet).block_hash()
@@ -196,18 +190,14 @@ fn rejects_wrong_networks_before_retrieving_state() -> Result<()> {
         }
     }
     assert!(Request::new(Network::Bitcoin, 2, 1).is_err());
+    assert!(Request::new(Network::Testnet, 0, 0).is_err());
+    assert!(Request::new(Network::Testnet4, 0, 0).is_err());
     Ok(())
 }
 
 #[test]
 fn retrieves_context_for_each_requested_network() -> Result<()> {
-    for network in [
-        Network::Bitcoin,
-        Network::Testnet,
-        Network::Testnet4,
-        Network::Signet,
-        Network::Regtest,
-    ] {
+    for network in [Network::Bitcoin, Network::Signet, Network::Regtest] {
         let header = genesis_block(network).header;
         let genesis = header.block_hash();
         let raw = serialize(&header).as_hex().to_string();

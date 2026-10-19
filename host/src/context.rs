@@ -2,11 +2,12 @@ use crate::connection::{electrum, utreexod_rpc};
 use anyhow::{Context as _, Result, bail};
 use bitcoin::{Network, blockdata::constants::genesis_block};
 use walledcity_core::context::{AccumulatorState, BlockEndpoint, ChainContext};
+use walledcity_core::network::SupportedNetwork;
 
 /// A fixed pair of lookup heights, never an implicit moving tip.
 #[derive(Clone, Copy, Debug)]
 pub struct Request {
-    network: Network,
+    network: SupportedNetwork,
     first: u32,
     last: u32,
 }
@@ -17,7 +18,7 @@ impl Request {
             bail!("first height must not exceed last height");
         }
         Ok(Self {
-            network,
+            network: network.try_into()?,
             first,
             last,
         })
@@ -35,7 +36,7 @@ pub fn fetch(
     let mut rpc = utreexod_rpc::Client::new(config);
     let mut chain = electrum::Client::connect(endpoint)?;
     chain.server_version()?;
-    let genesis = genesis_block(request.network).block_hash();
+    let genesis = genesis_block(Network::from(request.network)).block_hash();
     if rpc.block_hash(0)? != genesis {
         bail!(
             "RPC node is not on the requested network ({})",
@@ -49,11 +50,11 @@ pub fn fetch(
         );
     }
 
-    let first = endpoint_block(&mut rpc, request.network, request.first)?;
+    let first = endpoint_block(&mut rpc, request.network.into(), request.first)?;
     let last = if request.first == request.last {
         first.clone()
     } else {
-        endpoint_block(&mut rpc, request.network, request.last)?
+        endpoint_block(&mut rpc, request.network.into(), request.last)?
     };
     let roots = rpc.utreexo_roots(&last.hash()).with_context(|| {
         format!(

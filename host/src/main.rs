@@ -20,7 +20,7 @@ fn run(cli: cli::Cli) -> Result<()> {
     match cli.command {
         cli::Command::Context(options) => {
             let request = context::Request::new(
-                options.network,
+                options.network.into(),
                 options.first_height.unwrap_or(options.last_height),
                 options.last_height,
             )?;

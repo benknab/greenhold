@@ -1,6 +1,7 @@
 //! Public Bitcoin chain context. Parsing establishes structure, not chain acceptance.
 //! A verifier must retrieve these values from its own chosen stock nodes.
 
+use crate::network::SupportedNetwork;
 use anyhow::{Result, bail};
 use bitcoin::{
     BlockHash, Network,
@@ -16,14 +17,14 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "BlockEndpointFields")]
 pub struct BlockEndpoint {
-    network: Network,
+    network: SupportedNetwork,
     height: u32,
     header: Header,
 }
 
 #[derive(Deserialize)]
 struct BlockEndpointFields {
-    network: Network,
+    network: SupportedNetwork,
     height: u32,
     header: Header,
 }
@@ -32,8 +33,10 @@ impl BlockEndpoint {
     /// Parse a block endpoint for the selected network.
     ///
     /// # Errors
-    /// Rejects invalid proof of work, targets above the network's limit, and a wrong genesis.
+    /// Rejects unsupported networks, invalid proof of work, targets above the network's
+    /// limit, and a wrong genesis.
     pub fn new(network: Network, height: u32, header: Header) -> Result<Self> {
+        let supported = SupportedNetwork::try_from(network)?;
         if header.target() > Params::new(network).max_attainable_target {
             bail!("header target exceeds {network} proof-of-work limit");
         }
@@ -42,7 +45,7 @@ impl BlockEndpoint {
             bail!("height zero must be {network} genesis");
         }
         Ok(Self {
-            network,
+            network: supported,
             height,
             header,
         })
@@ -50,7 +53,7 @@ impl BlockEndpoint {
 
     #[must_use]
     pub fn network(&self) -> Network {
-        self.network
+        self.network.into()
     }
 
     #[must_use]
@@ -73,7 +76,7 @@ impl TryFrom<BlockEndpointFields> for BlockEndpoint {
     type Error = anyhow::Error;
 
     fn try_from(fields: BlockEndpointFields) -> Result<Self> {
-        Self::new(fields.network, fields.height, fields.header)
+        Self::new(fields.network.into(), fields.height, fields.header)
     }
 }
 

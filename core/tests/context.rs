@@ -119,13 +119,7 @@ fn deserialization_cannot_bypass_invariants() -> Result<()> {
 
 #[test]
 fn networks_select_genesis_and_work_limits_and_bind_the_digest() -> Result<()> {
-    let networks = [
-        Network::Bitcoin,
-        Network::Testnet,
-        Network::Testnet4,
-        Network::Signet,
-        Network::Regtest,
-    ];
+    let networks = [Network::Bitcoin, Network::Signet, Network::Regtest];
     let mut digests = Vec::new();
     for network in networks {
         let genesis = BlockEndpoint::new(network, 0, genesis_block(network).header)?;
@@ -162,7 +156,20 @@ fn networks_select_genesis_and_work_limits_and_bind_the_digest() -> Result<()> {
         BlockEndpoint::new(Network::Regtest, 1, genesis_block(Network::Regtest).header).is_ok()
     );
     let mainnet = BlockEndpoint::new(Network::Bitcoin, 1, genesis_block(Network::Bitcoin).header)?;
-    let testnet = BlockEndpoint::new(Network::Testnet, 2, genesis_block(Network::Bitcoin).header)?;
-    assert!(ChainContext::new(mainnet, testnet, AccumulatorState::new(0, vec![])?).is_err());
+    let signet = BlockEndpoint::new(Network::Signet, 2, genesis_block(Network::Bitcoin).header)?;
+    assert!(ChainContext::new(mainnet, signet, AccumulatorState::new(0, vec![])?).is_err());
+    Ok(())
+}
+
+#[test]
+fn rejects_testnets_in_constructors_and_serialized_contexts() -> Result<()> {
+    let context = ChainContext::new(block(1)?, block(2)?, AccumulatorState::new(0, vec![])?)?;
+    for network in [Network::Testnet, Network::Testnet4] {
+        assert!(BlockEndpoint::new(network, 0, genesis_block(network).header).is_err());
+        let mut encoded = serde_json::to_value(&context)?;
+        encoded["first"]["network"] = json!(network);
+        encoded["last"]["network"] = json!(network);
+        assert!(serde_json::from_value::<ChainContext>(encoded).is_err());
+    }
     Ok(())
 }

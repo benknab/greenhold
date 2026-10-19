@@ -1,8 +1,8 @@
 use crate::connection::{electrum, utreexod_rpc};
 use anyhow::{Context, Result, bail};
-use bitcoin::Network;
 use clap::{Args, Parser, Subcommand};
 use url::Url;
+use walledcity_core::network::SupportedNetwork;
 
 pub const DEFAULT_ELECTRUM: &str = "tls://electrum.hospitablealpaca.com:50002";
 pub const DEFAULT_RPC: &str = "https://utreexo.hospitablealpaca.com/";
@@ -26,9 +26,9 @@ pub enum Command {
 
 #[derive(Debug, Args)]
 pub struct ContextOptions {
-    /// Bitcoin network: mainnet, testnet, testnet4, signet, or regtest.
-    #[arg(long, default_value = "mainnet", value_parser = parse_network)]
-    pub network: Network,
+    /// Bitcoin network: bitcoin, signet, or regtest.
+    #[arg(long, default_value = "bitcoin")]
+    pub network: SupportedNetwork,
 
     /// Fixed last block height T. State is fetched at this block.
     pub last_height: u32,
@@ -110,13 +110,6 @@ impl std::fmt::Debug for Redacted {
     }
 }
 
-fn parse_network(text: &str) -> Result<Network> {
-    if text == "mainnet" {
-        return Ok(Network::Bitcoin);
-    }
-    text.parse().context("invalid Bitcoin network")
-}
-
 fn rpc_user(text: &str) -> Result<String> {
     if text.is_empty() || text.contains(':') {
         bail!("RPC username must be nonempty and must not contain ':'");
@@ -148,6 +141,7 @@ fn rpc_url(text: &str) -> Result<Url> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bitcoin::Network;
 
     fn parse_context<const N: usize>(args: [&str; N]) -> Result<ContextOptions> {
         let Command::Context(options) = Cli::try_parse_from(args)?.command;
@@ -157,18 +151,18 @@ mod tests {
     #[test]
     fn context_network_selection() -> Result<()> {
         for (name, network) in [
-            ("mainnet", Network::Bitcoin),
-            ("testnet", Network::Testnet),
-            ("testnet4", Network::Testnet4),
+            ("bitcoin", Network::Bitcoin),
             ("signet", Network::Signet),
             ("regtest", Network::Regtest),
         ] {
             let options = parse_context(["host", "context", "100", "--network", name])?;
-            assert_eq!(options.network, network);
+            assert_eq!(Network::from(options.network), network);
         }
         let options = parse_context(["host", "context", "100"])?;
-        assert_eq!(options.network, Network::Bitcoin);
-        assert!(Cli::try_parse_from(["host", "context", "100", "--network", "unknown"]).is_err());
+        assert_eq!(Network::from(options.network), Network::Bitcoin);
+        for name in ["mainnet", "testnet", "testnet4", "unknown"] {
+            assert!(Cli::try_parse_from(["host", "context", "100", "--network", name]).is_err());
+        }
         Ok(())
     }
 
