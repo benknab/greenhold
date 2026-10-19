@@ -1,6 +1,6 @@
 use crate::{connection::utreexod_rpc, context};
 use anyhow::{Context, Result, bail};
-use bitcoin::{OutPoint, TxOut};
+use bitcoin::{OutPoint, TxOut, hashes::Hash};
 use walledcity_core::{
     coin::{Coin, CoinWitness},
     context::ChainContext,
@@ -63,10 +63,19 @@ fn bind(coin: Coin, proof: utreexod_rpc::ChainTipProof) -> Result<CoinWitness> {
     let [leaf] = proof.hashes_proven.as_slice() else {
         bail!("expected one proven leaf");
     };
-    if *leaf != coin.leaf_hash() {
+    if leaf.to_byte_array() != coin.leaf_hash() {
         bail!("RPC proven leaf does not match reconstructed coin");
     }
-    CoinWitness::new(coin, proof.proved_at_hash, *target, proof.proof_hashes)
+    CoinWitness::new(
+        coin,
+        proof.proved_at_hash,
+        *target,
+        proof
+            .proof_hashes
+            .into_iter()
+            .map(Hash::to_byte_array)
+            .collect(),
+    )
 }
 
 #[cfg(test)]

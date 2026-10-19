@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, bail};
-use bitcoin::{Amount, BlockHash, ScriptBuf, hashes::Hash, hex::FromHex};
+use bitcoin::{Amount, BlockHash, ScriptBuf, hashes::sha256d, hex::FromHex};
 use serde::{Deserialize, Deserializer};
 
 #[derive(Debug, Deserialize)]
@@ -16,15 +16,7 @@ pub struct TxOutResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct ScriptPubKey {
-    #[serde(deserialize_with = "deserialize_script")]
     pub hex: ScriptBuf,
-}
-
-fn deserialize_script<'de, D: Deserializer<'de>>(deserializer: D) -> Result<ScriptBuf, D::Error> {
-    let hex = String::deserialize(deserializer)?;
-    Vec::<u8>::from_hex(&hex)
-        .map(ScriptBuf::from_bytes)
-        .map_err(serde::de::Error::custom)
 }
 
 fn deserialize_amount<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Amount, D::Error> {
@@ -68,24 +60,11 @@ pub struct ChainTipProof {
     pub proved_at_hash: BlockHash,
     #[serde(rename = "prooftargets")]
     pub proof_targets: Vec<u64>,
-    #[serde(
-        rename = "hashesproven",
-        deserialize_with = "deserialize_display_hashes"
-    )]
-    pub hashes_proven: Vec<[u8; 32]>,
     // This RPC reverses hashes for display, unlike getutreexoroots.
-    #[serde(
-        rename = "proofhashes",
-        deserialize_with = "deserialize_display_hashes"
-    )]
-    pub proof_hashes: Vec<[u8; 32]>,
-}
-
-fn deserialize_display_hashes<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Vec<[u8; 32]>, D::Error> {
-    let hashes = Vec::<bitcoin::hashes::sha256d::Hash>::deserialize(deserializer)?;
-    Ok(hashes.into_iter().map(Hash::to_byte_array).collect())
+    #[serde(rename = "hashesproven")]
+    pub hashes_proven: Vec<sha256d::Hash>,
+    #[serde(rename = "proofhashes")]
+    pub proof_hashes: Vec<sha256d::Hash>,
 }
 
 /// Parsed accumulator state reported by the node, not independently verified chain state.

@@ -1,4 +1,5 @@
 use super::*;
+use bitcoin::hashes::Hash;
 use serde_json::json;
 
 #[test]
@@ -86,8 +87,11 @@ fn proof_response_preserves_multiple_targets_and_decodes_display_hashes() -> Res
         "hashesproven":[display, display], "proofhashes":[display], "extra":true});
     let proof: ChainTipProof = serde_json::from_value(response.clone())?;
     assert_eq!(proof.proof_targets, [0, 1]);
-    assert_eq!(proof.hashes_proven, [bytes, bytes]);
-    assert_eq!(proof.proof_hashes, [bytes]);
+    assert_eq!(
+        proof.hashes_proven,
+        [sha256d::Hash::from_byte_array(bytes); 2]
+    );
+    assert_eq!(proof.proof_hashes, [sha256d::Hash::from_byte_array(bytes)]);
     for (field, value) in [
         ("prooftargets", json!([-1, 0])),
         ("hashesproven", json!(["zz", display])),
