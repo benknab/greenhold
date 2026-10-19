@@ -3,7 +3,7 @@ incompatible-rust-versions = "fallback"
 
 [alias]
 lint = "clippy --locked --release --workspace --all-targets -- -D warnings"
-regtest = "test --locked --release -p walledcity-host --test regtest -- --ignored --nocapture"
+regtest = "test --locked --release -p walledcity-host --test regtest -- --ignored --nocapture --test-threads=1"
 mutate = "mutants --package walledcity-core --package walledcity-host"
 
 [env]
