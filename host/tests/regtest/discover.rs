@@ -1,5 +1,5 @@
 use crate::support::{
-    MINING_ADDRESS, Node, command, image, rejection, success,
+    Node, WALLET_ADDRESS, command, image, rejection, sign_claim, success,
     transactions::{broadcast, mined, spend},
 };
 use anyhow::{Context, Result};
@@ -25,7 +25,7 @@ fn discover(node: &Node, address: &Address) -> Result<Vec<OutPoint>> {
 fn discovery_lists_confirmed_coins_across_pages_and_feeds_the_prover() -> Result<()> {
     let image = image()?;
     let mining = Address::p2wsh(&ScriptBuf::from_bytes(vec![0x51]), Network::Regtest);
-    let destination = MINING_ADDRESS
+    let destination = WALLET_ADDRESS
         .parse::<Address<_>>()?
         .require_network(Network::Regtest)?;
     let node = Node::start(
@@ -85,18 +85,7 @@ fn discovery_lists_confirmed_coins_across_pages_and_feeds_the_prover() -> Result
     assert!(!mining_coins.contains(&spent));
     assert!(mining_coins.contains(&OutPoint::new(funding.compute_txid(), 2)));
     assert_eq!(mining_coins.len(), 1_233);
-    let report = success(&command(
-        &node,
-        "regtest",
-        "prove",
-        &[
-            &outputs.first().context("discovered coin")?.to_string(),
-            "--dry-run",
-            "--minimum-sats",
-            "2000000000",
-        ],
-    )?)?;
-    assert_eq!(report["claim"]["minimum_sats"], 2_000_000_000_u64);
+    prove_discovered(&node, *outputs.first().context("discovered coin")?)?;
     // An unused address is an empty result, even when other addresses have history.
     let unused = Address::p2wsh(&ScriptBuf::from_bytes(vec![0x52]), Network::Regtest);
     assert!(discover(&node, &unused)?.is_empty());
@@ -119,5 +108,40 @@ fn discovery_lists_confirmed_coins_across_pages_and_feeds_the_prover() -> Result
         )?,
         "node needs --addrindex",
     );
+    Ok(())
+}
+
+fn prove_discovered(node: &Node, outpoint: OutPoint) -> Result<()> {
+    let directory = tempfile::tempdir()?;
+    let witness_path = directory.path().join("coin.witness");
+    let witness = witness_path.to_str().context("witness path")?;
+    let report = success(&command(
+        node,
+        "regtest",
+        "claim",
+        &[
+            &outpoint.to_string(),
+            "--witness",
+            witness,
+            "--minimum-sats",
+            "2000000000",
+        ],
+    )?)?;
+    let signature = sign_claim(&report)?;
+    let claim = report["encoded"].as_str().context("encoded claim")?;
+    let report = success(&command(
+        node,
+        "regtest",
+        "prove",
+        &[
+            claim,
+            "--witness",
+            witness,
+            "--signature",
+            &signature,
+            "--dry-run",
+        ],
+    )?)?;
+    assert_eq!(report["claim"]["minimum_sats"], 2_000_000_000_u64);
     Ok(())
 }

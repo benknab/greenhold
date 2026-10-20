@@ -24,7 +24,8 @@ pub struct BlockRef {
 }
 
 /// Some eligible coin worth at least M, created by X and unspent at T, exists in
-/// the chain state that the context digest names. Parsing does not make that true;
+/// the chain state that the context digest names, and its script verifies a signature
+/// over this exact claim's signing message. Parsing does not make that true;
 /// a verifier rebuilds the expected claim from its own nodes and compares.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Claim {
@@ -71,6 +72,13 @@ impl Claim {
     #[must_use]
     pub fn minimum_sats(&self) -> MinimumAmount {
         self.minimum_sats
+    }
+
+    /// The exact 80-byte ASCII message to sign: a domain prefix and the lowercase
+    /// SHA-256 hex digest of the canonical claim, without a newline or terminator.
+    #[must_use]
+    pub fn signing_message(&self) -> String {
+        format!("greenhold/claim:{}", sha256::Hash::hash(&self.to_bytes()))
     }
 
     /// Fixed-length canonical bytes: the tag, the network's genesis hash, then for

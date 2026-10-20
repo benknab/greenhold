@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["core", "guest", "guest-builder", "host"]
+members = ["core", "guest", "guest-builder", "host", "signer"]
 default-members = ["host"]
 
 [workspace.package]
@@ -11,10 +11,12 @@ publish = false
 
 [workspace.dependencies]
 anyhow = "1"
-bitcoin = { version = "0.32", features = ["serde"] }
+bip322 = "=0.0.12"
+bitcoin = { version = "0.32", features = ["base64", "serde"] }
 serde = { version = "1", features = ["derive"] }
 greenhold-core = { path = "core" }
 greenhold-guest-builder = { path = "guest-builder" }
+greenhold-signer = { path = "signer" }
 risc0-build = "=3.0.6"
 risc0-zkvm = { version = "=3.0.6", default-features = false }
 

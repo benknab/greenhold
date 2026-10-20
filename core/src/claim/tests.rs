@@ -103,3 +103,45 @@ fn claim_parsing_rejects_malformed_bytes() -> Result<()> {
     }
     Ok(())
 }
+
+#[test]
+fn signing_message_matches_independent_vector_and_binds_every_field() -> Result<()> {
+    // Python hashlib and OpenSSL vector: synthetic genesis state, encoding only.
+    let endpoint = BlockEndpoint::new(Network::Bitcoin, 0, header(Network::Bitcoin))?;
+    let context = ChainContext::new(
+        endpoint.clone(),
+        endpoint,
+        AccumulatorState::new(3, vec![[0x11; 32], [0x22; 32]])?,
+    )?;
+    let claim = Claim::new(&context, MinimumAmount::try_from(12_345)?);
+    assert_eq!(claim.to_bytes().len(), 163);
+    assert_eq!(
+        claim.signing_message(),
+        "greenhold/claim:08897142df4b6e679e53cd3b01b0eed9a2f3e01d0fbdf83f353bf52a716d4523"
+    );
+    let original = self::claim()?;
+    let bytes = original.to_bytes();
+    for offset in [
+        NETWORK,
+        FIRST,
+        FIRST + 4,
+        LAST,
+        LAST + 4,
+        MINIMUM,
+        MINIMUM + 8,
+    ] {
+        let mut changed = bytes.clone();
+        if offset == NETWORK {
+            changed[NETWORK..FIRST]
+                .copy_from_slice(genesis_block(Network::Signet).block_hash().as_byte_array());
+        } else {
+            changed[offset] ^= 1;
+        }
+        let changed = Claim::try_from(changed.as_slice())?;
+        assert_ne!(changed.signing_message(), original.signing_message());
+    }
+    let mut old_format = bytes;
+    old_format.extend([0; 32]);
+    assert!(Claim::try_from(old_format.as_slice()).is_err());
+    Ok(())
+}

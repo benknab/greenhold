@@ -1,7 +1,9 @@
 use crate::connection::{electrum, utreexod_rpc};
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand};
-use greenhold_core::{eligibility::MinimumAmount, network::SupportedNetwork};
+use greenhold_core::{
+    eligibility::MinimumAmount, network::SupportedNetwork, verification::Signature,
+};
 use std::path::PathBuf;
 use url::Url;
 
@@ -23,9 +25,11 @@ pub struct Cli {
 pub enum Command {
     /// List confirmed unspent outpoints for an address, one per line.
     Discover(DiscoverOptions),
-    /// Prove one coin's public claim and write the receipt (node proofs are tip-only).
+    /// Prepare a claim and private coin witness to sign (node proofs are tip-only).
+    Claim(ClaimOptions),
+    /// Prove a prepared claim using its saved witness and signature.
     Prove(ProveOptions),
-    /// Verify a receipt and check its claim against the node's chain state.
+    /// Verify a receipt against the expected claim and the node's chain state.
     Verify(VerifyOptions),
     /// Check a receipt's proof and print its claim, without node access or chain checks.
     Inspect(InspectOptions),
@@ -56,6 +60,10 @@ pub struct VerifyOptions {
     /// Receipt file to verify.
     pub receipt: PathBuf,
 
+    /// Independently approved claim as standard padded Base64.
+    #[arg(long, value_name = "BASE64")]
+    pub claim: String,
+
     /// Bitcoin network the claim must name: bitcoin, signet, or regtest.
     #[arg(long, default_value = "bitcoin")]
     pub network: SupportedNetwork,
@@ -72,12 +80,16 @@ pub struct InspectOptions {
 
 #[derive(Debug, Args)]
 pub struct ProveOptions {
-    /// Candidate output as TXID:VOUT (zero-based output index).
-    pub outpoint: bitcoin::OutPoint,
+    /// Standard padded Base64 claim from the claim command's encoded field.
+    pub claim: String,
 
-    /// Minimum coin value M in satoshis, up to 2100000000000000.
-    #[arg(long, value_name = "SATS", default_value = "1")]
-    pub minimum_sats: MinimumAmount,
+    /// Private coin witness captured with the claim.
+    #[arg(long, value_name = "FILE")]
+    pub witness: PathBuf,
+
+    /// BIP-322 signature over the claim's exact signing message.
+    #[arg(long)]
+    pub signature: Signature,
 
     /// Receipt file to write. Replaces an existing file.
     #[arg(long, value_name = "FILE", required_unless_present = "dry_run")]
@@ -86,6 +98,27 @@ pub struct ProveOptions {
     /// Run the guest without proving, and write no receipt.
     #[arg(long, conflicts_with = "output")]
     pub dry_run: bool,
+
+    /// Bitcoin network the claim must name: bitcoin, signet, or regtest.
+    #[arg(long, default_value = "bitcoin")]
+    pub network: SupportedNetwork,
+
+    #[command(flatten)]
+    pub connections: ConnectionConfig,
+}
+
+#[derive(Debug, Args)]
+pub struct ClaimOptions {
+    /// Candidate output as TXID:VOUT (zero-based output index).
+    pub outpoint: bitcoin::OutPoint,
+
+    /// Minimum coin value M in satoshis, up to 2100000000000000.
+    #[arg(long, value_name = "SATS", default_value = "1")]
+    pub minimum_sats: MinimumAmount,
+
+    /// Private coin witness file to write. Replaces an existing file.
+    #[arg(long, value_name = "FILE")]
+    pub witness: PathBuf,
 
     #[command(flatten)]
     pub context: ContextOptions,
@@ -97,7 +130,7 @@ pub struct ContextOptions {
     #[arg(long, default_value = "bitcoin")]
     pub network: SupportedNetwork,
 
-    /// Last block height T. Defaults to the RPC tip (the proof's block for prove).
+    /// Last block height T. Defaults to the tip proof's block.
     pub last_height: Option<u32>,
 
     /// First block height X. Defaults to T for a single-block context.

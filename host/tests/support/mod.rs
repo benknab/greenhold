@@ -1,4 +1,5 @@
 use anyhow::{Context, Result, bail};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use bitcoin::{
     BlockHash,
     hashes::{Hash, sha256},
@@ -21,6 +22,26 @@ use wait_timeout::ChildExt;
 pub mod transactions;
 
 pub const MINING_ADDRESS: &str = "bcrt1qusgerygumpd0ztn735s5pypq6wsv2zzhuc4yak";
+
+/// The regtest test wallet: BIP-32 test vector 1 seed, P2WPKH key at m/84'/1'/0'/0/0.
+pub const WALLET_ADDRESS: &str = "bcrt1q7f0pjwhc3jzzv0w4uurm589506glv2dggfan4s";
+pub const WALLET_PATH: &str = "m/84'/1'/0'/0/0";
+pub const WALLET_SEED: [u8; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+/// Sign canonical bytes, independently deriving the message from their hash.
+pub fn sign_claim(report: &Value) -> Result<String> {
+    let encoded = STANDARD.decode(report["encoded"].as_str().context("claim bytes")?)?;
+    let message = format!("greenhold/claim:{}", sha256::Hash::hash(&encoded));
+    assert_eq!(report["message"], message);
+    let key = greenhold_signer::derive_key(&WALLET_SEED, &WALLET_PATH.parse()?)?;
+    Ok(greenhold_signer::sign(
+        greenhold_signer::ScriptType::P2wpkh,
+        greenhold_signer::Format::Simple,
+        &key,
+        bitcoin::Network::Regtest,
+        &message,
+    )?
+    .signature)
+}
 
 pub fn image() -> Result<GenericImage> {
     Ok(

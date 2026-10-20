@@ -29,6 +29,7 @@ greenhold-guest-builder.workspace = true
 risc0-zkvm = { workspace = true, features = ["prove", "disable-dev-mode"] }
 
 [dev-dependencies]
+greenhold-signer.workspace = true
 tempfile = "3"
 testcontainers = { version = "=0.28.0", features = ["blocking"] }
 wait-timeout = "0.2"
