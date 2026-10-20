@@ -6,13 +6,15 @@ use bitcoin::{
     Address, Network, Script, Sequence, Transaction, Witness,
     absolute::LockTime,
     base64::{Engine as _, engine::general_purpose::STANDARD},
-    consensus::deserialize,
+    consensus::{deserialize, serialize},
     sign_message::MessageSignature,
 };
+use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
 /// A decoded BIP-322 signature. Parsing checks only the encoding.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
 pub struct Signature(Encoding);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -20,6 +22,26 @@ enum Encoding {
     Legacy(MessageSignature),
     Simple(Witness),
     Full(Transaction),
+}
+
+impl TryFrom<String> for Signature {
+    type Error = anyhow::Error;
+
+    fn try_from(text: String) -> Result<Self> {
+        text.parse()
+    }
+}
+
+impl From<Signature> for String {
+    fn from(signature: Signature) -> Self {
+        match signature.0 {
+            Encoding::Legacy(signature) => STANDARD.encode(signature.serialize()),
+            Encoding::Simple(witness) => format!("smp{}", STANDARD.encode(serialize(&witness))),
+            Encoding::Full(transaction) => {
+                format!("ful{}", STANDARD.encode(serialize(&transaction)))
+            }
+        }
+    }
 }
 
 impl FromStr for Signature {

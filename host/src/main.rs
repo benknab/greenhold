@@ -45,7 +45,7 @@ fn run(cli: cli::Cli) -> Result<()> {
                 .address
                 .require_network(network)
                 .context("address does not match the requested network")?;
-            // Check the signature before any node access. The guest does not check it yet.
+            // Reject bad signatures before node access; the guest independently checks them.
             let script = address.script_pubkey();
             verify_signature(&script, &options.message, &options.signature)
                 .context("BIP-322 signature check failed")?;
@@ -59,8 +59,14 @@ fn run(cli: cli::Cli) -> Result<()> {
             if coin.witness().coin().output().script_pubkey != script {
                 bail!("--address does not lock the coin");
             }
-            let claim = Claim::new(&context, options.minimum_sats);
-            let input = ClaimInput::new(context, coin.witness().clone(), options.minimum_sats);
+            let claim = Claim::new(&context, options.minimum_sats, &options.message);
+            let input = ClaimInput::new(
+                context,
+                coin.witness().clone(),
+                options.minimum_sats,
+                options.message,
+                options.signature,
+            );
             // Execution is fast, so a rejected input fails before the slow proving step.
             let cycles = guest::execute(&input, &claim)?;
             let mut report = report(&claim);
@@ -80,12 +86,14 @@ fn run(cli: cli::Cli) -> Result<()> {
         cli::Command::Verify(options) => {
             let receipt = receipt::read(&options.receipt)?;
             let rpc = options.connections.rpc_config()?;
-            let claim = verify::claim(&receipt, options.network, &rpc)?;
+            let claim = verify::claim(&receipt, options.network, &options.message, &rpc)?;
             println!("{}", serde_json::to_string_pretty(&report(&claim))?);
         }
         cli::Command::Inspect(options) => {
             let claim = guest::verify(&receipt::read(&options.receipt)?)?;
-            eprintln!("Proof checked. Chain state not checked: use verify to accept the claim.");
+            eprintln!(
+                "Proof checked. Expected message and chain state not checked: use verify to accept the claim."
+            );
             println!("{}", serde_json::to_string_pretty(&report(&claim))?);
         }
     }

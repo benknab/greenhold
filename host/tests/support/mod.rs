@@ -27,7 +27,7 @@ pub const MINING_ADDRESS: &str = "bcrt1qusgerygumpd0ztn735s5pypq6wsv2zzhuc4yak";
 pub const WALLET_ADDRESS: &str = "bcrt1q7f0pjwhc3jzzv0w4uurm589506glv2dggfan4s";
 pub const WALLET_PATH: &str = "m/84'/1'/0'/0/0";
 pub const WALLET_SEED: [u8; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
-const MESSAGE: &str = "Greenhold regtest";
+pub const MESSAGE: &str = "Greenhold regtest";
 pub const WALLET: [&str; 6] = [
     "--address",
     WALLET_ADDRESS,

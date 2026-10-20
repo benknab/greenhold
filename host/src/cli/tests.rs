@@ -196,6 +196,26 @@ fn prove_needs_an_address_message_and_well_formed_signature() -> Result<()> {
 }
 
 #[test]
+fn verify_requires_an_explicit_message_including_empty_text() -> Result<()> {
+    let error = Cli::try_parse_from(["host", "verify", "claim.receipt"])
+        .err()
+        .context("missing message accepted")?;
+    assert_eq!(
+        error.kind(),
+        clap::error::ErrorKind::MissingRequiredArgument
+    );
+    for message in ["", "a message\nwith whitespace", "árvíz 🦀"] {
+        let Command::Verify(options) =
+            Cli::try_parse_from(["host", "verify", "claim.receipt", "--message", message])?.command
+        else {
+            bail!("expected verify command");
+        };
+        assert_eq!(options.message, message);
+    }
+    Ok(())
+}
+
+#[test]
 fn rpc_url_excludes_embedded_secrets_and_non_http_transports() {
     for text in [
         "ftp://host/",

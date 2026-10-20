@@ -12,6 +12,9 @@ use bitcoin::{
 
 pub const VALUE: u64 = 12_345;
 
+#[path = "../tests/fixtures/signatures.rs"]
+pub mod signatures;
+
 pub fn coin(creation_height: u32, coinbase: bool) -> Result<Coin> {
     Coin::new(
         OutPoint::new(Txid::from_byte_array([1; 32]), 2),

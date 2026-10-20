@@ -1,16 +1,16 @@
 # Greenhold
 
 An experimental Bitcoin proof-of-funds project using BIP-322 and RISC Zero.
-The goal is to prove the following claim without revealing the coin or its script:
+It proves the following claim without revealing the coin or its script:
 
 > There exists an eligible coin worth at least M, created by X and unspent at T,
-> whose locking script authorized this exact claim.
+> whose locking script verifies a signature over the expected message.
 
 M is the minimum amount in satoshis. X and T are block heights, with X ≤ T.
 The coin must have been created at or before X and remain unspent in the accepted
 chain state at T. Authorization means a valid BIP-322 signature for the coin's
-locking script (its scriptPubKey) over the exact claim. The script does not need
-an address form.
+locking script (its scriptPubKey) over an arbitrary message. Signing the exact
+funds claim is planned for later.
 
 The signature establishes authorization at signing time. It does not identify a
 person or prove that the signer held the keys at X, at T, or throughout that period.
@@ -55,15 +55,17 @@ coin to your request. For privacy, use your own node with `--utreexod-rpc`,
 `--utreexod-rpc-user`, and `--utreexod-rpc-password`.
 
 ```sh
-cargo run --locked --release -- prove <TXID:VOUT> --first-height <X> --minimum-sats <M> --output <FILE>
+cargo run --locked --release -- prove <TXID:VOUT> --address <ADDRESS> --message <TEXT> --signature <SIGNATURE> --first-height <X> --minimum-sats <M> --output <FILE>
 ```
 
 This command builds the host and guest. It then proves the claim for one coin:
 
-1. The node supplies the coin, its Utreexo membership proof, and the chain state.
-2. The host checks that the coin is eligible for the claim.
+1. The host checks the signature against the address and message before node access.
+2. The node supplies the coin, its Utreexo membership proof, and the chain state.
+   The host checks eligibility and that the address's script locks the coin.
 3. The host runs the guest in the zkVM without proving. The guest checks the
-   coin's membership and eligibility again and commits the claim.
+   coin's membership and eligibility again, verifies the signature against the
+   authenticated coin's script, and commits the claim with the message's SHA-256 digest.
 4. The host proves the guest run. It verifies the receipt against the guest image
    ID and checks that the receipt contains the expected claim.
 5. The host writes the receipt to `<FILE>`. It prints the public claim as JSON and
@@ -78,18 +80,24 @@ proves membership only at its tip. Without `--first-height`, X is T. Without
 `--minimum-sats`, M is 1 satoshi. Use `--network signet` or `--network regtest`
 for other networks.
 
+Simple signatures (`smp`, or unprefixed) support P2WPKH and P2TR key-path spends.
+Full signatures (`ful`) also support P2PKH and P2SH-P2WPKH. Legacy signatures
+support P2PKH only. Time-locked and proof-of-funds signatures are rejected.
+See [`signer/`](signer/) for generating test signatures.
+
 To check a receipt from another person, use your own node:
 
 ```sh
-cargo run --locked --release -- verify <FILE>
+cargo run --locked --release -- verify <FILE> --message <TEXT>
 ```
 
 1. The host reads the file, up to 1 MiB, and decodes the receipt.
 2. The host checks that the receipt is a succinct proof of this guest's run.
 3. The host reads the claim from the receipt. The claim must name the network
-   from `--network`, which is `bitcoin` by default.
+   from `--network`, which is `bitcoin` by default, and the SHA-256 digest of
+   `--message`. Messages use exact UTF-8 bytes without normalization.
 4. The node supplies its blocks at heights X and T and its Utreexo state at T.
-   The host builds the expected claim from that data and the claim's M.
+   The host builds the expected claim from that data, the claim's M, and the expected message.
 5. The host accepts the receipt only if the two claims are equal. It then prints
    the claim.
 
@@ -100,12 +108,12 @@ after T, because the claim is about T.
 Check the printed X, T, and M yourself. `verify` accepts any eligible claim
 that matches the chain, including one with a lower M than you expect.
 
-`inspect <FILE>` does steps 1 to 3 and prints the claim without node access. It
-does not check the claim against chain state, so do not accept a claim from
-`inspect` alone.
+`inspect <FILE>` checks the receipt proof and prints the claim without node access.
+It does not check an expected message or chain state, so do not accept a claim
+from `inspect` alone.
 
-The guest does not check the BIP-322 signature yet. Until it does, a receipt
-does not prove that the coin's script authorized the claim.
+The message and signature are private guest inputs. The public message digest
+allows anyone with a candidate message to check whether it matches.
 
 ## Privacy
 

@@ -1,10 +1,14 @@
 use crate::support::{
-    MINING_ADDRESS, Node, TAPROOT_WALLET, WALLET, WALLET_ADDRESS, command, command_with_timeout,
-    context_digest, image, inspect, rejection, success,
+    MESSAGE, MINING_ADDRESS, Node, TAPROOT_WALLET, WALLET, WALLET_ADDRESS, command,
+    command_with_timeout, context_digest, image, inspect, rejection, success,
     transactions::{broadcast, mined, spend_signed},
 };
 use anyhow::{Context, Result};
-use bitcoin::{Address, Amount, Network, OutPoint, Transaction, hex::FromHex};
+use bitcoin::{
+    Address, Amount, Network, OutPoint, Transaction,
+    hashes::{Hash, sha256},
+    hex::FromHex,
+};
 use greenhold_core::claim::Claim;
 use greenhold_guest_builder::GREENHOLD_GUEST_ID;
 use risc0_zkvm::{InnerReceipt, Receipt, sha::Digest};
@@ -49,8 +53,9 @@ fn prove_and_verify_use_real_transactions_and_reject_ineligible_coins() -> Resul
         "encoded": report["encoded"],
         "image_id": report["image_id"],
     });
-    let verify =
-        |node: &Node, network: &str, receipt: &str| command(node, network, "verify", &[receipt]);
+    let verify = |node: &Node, network: &str, receipt: &str| {
+        command(node, network, "verify", &[receipt, "--message", MESSAGE])
+    };
     assert_eq!(success(&verify(&node, "regtest", receipt)?)?, accepted);
     assert_eq!(success(&inspect(receipt)?)?, accepted);
     rejection(
@@ -148,7 +153,29 @@ fn funded_node() -> Result<(Node, Address, Transaction)> {
 /// Reject a changed receipt, another chain, and a node without historical roots.
 fn assert_verify_fails_closed(node: &Node, path: &Path) -> Result<()> {
     let receipt = path.to_str().context("receipt path")?;
-    let verify = |node: &Node, receipt: &str| command(node, "regtest", "verify", &[receipt]);
+    // The same valid receipt cannot answer a different message, even without a node.
+    for message in ["", "Greenhold regtest ", "another challenge"] {
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_greenhold-host"))
+            .args([
+                "verify",
+                receipt,
+                "--network",
+                "regtest",
+                "--message",
+                message,
+                "--utreexod-rpc",
+                "http://127.0.0.1:9/",
+                "--utreexod-rpc-user",
+                "test",
+                "--utreexod-rpc-password",
+                "test",
+            ])
+            .output()?;
+        rejection(&output, "receipt does not match the expected message");
+    }
+    let verify = |node: &Node, receipt: &str| {
+        command(node, "regtest", "verify", &[receipt, "--message", MESSAGE])
+    };
     // A changed journal no longer matches the seal.
     let mut tampered: Receipt = bincode::deserialize(&fs::read(path)?[TAG.len()..])?;
     *tampered.journal.bytes.last_mut().context("empty journal")? ^= 1;
@@ -207,6 +234,10 @@ fn assert_claim(node: &Node, report: &Value, first: u32, last: u32, minimum: u64
     }
     assert_eq!(claim["minimum_sats"], minimum);
     assert_eq!(claim["context_digest"], context_digest(node, first, last)?);
+    assert_eq!(
+        claim["message_digest"],
+        sha256::Hash::hash(MESSAGE.as_bytes()).to_string()
+    );
     // The claim came from the guest's journal, so the run must name this guest build.
     let image_id = Digest::from(GREENHOLD_GUEST_ID).to_string();
     assert_eq!(report["image_id"], image_id);

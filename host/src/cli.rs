@@ -26,7 +26,7 @@ pub enum Command {
     Discover(DiscoverOptions),
     /// Prove one coin's public claim and write the receipt (node proofs are tip-only).
     Prove(ProveOptions),
-    /// Verify a receipt and check its claim against the node's chain state.
+    /// Verify a receipt against the expected message and the node's chain state.
     Verify(VerifyOptions),
     /// Check a receipt's proof and print its claim, without node access or chain checks.
     Inspect(InspectOptions),
@@ -49,6 +49,10 @@ pub struct DiscoverOptions {
 pub struct VerifyOptions {
     /// Receipt file to verify.
     pub receipt: PathBuf,
+
+    /// Exact message whose signature the receipt must prove.
+    #[arg(long, value_name = "TEXT")]
+    pub message: String,
 
     /// Bitcoin network the claim must name: bitcoin, signet, or regtest.
     #[arg(long, default_value = "bitcoin")]
