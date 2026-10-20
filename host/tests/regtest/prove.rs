@@ -4,7 +4,8 @@ use crate::support::{
     transactions::{broadcast, mined, spend_signed},
 };
 use anyhow::{Context, Result};
-use bitcoin::{Address, Amount, Network, OutPoint, Transaction, hex::FromHex};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
+use bitcoin::{Address, Amount, Network, OutPoint, Transaction};
 use greenhold_core::claim::Claim;
 use greenhold_guest_builder::GREENHOLD_GUEST_ID;
 use risc0_zkvm::{InnerReceipt, Receipt, sha::Digest};
@@ -19,10 +20,8 @@ fn prepared_claim_survives_signing_delay_and_spending_but_not_a_reorg() -> Resul
     let (node, address, funding) = funded_node()?;
     let input = OutPoint::new(funding.compute_txid(), 0).to_string();
     let directory = tempfile::tempdir()?;
-    let claim_path = directory.path().join("claim.bin");
     let witness_path = directory.path().join("coin.witness");
     let receipt_path = directory.path().join("claim.receipt");
-    let claim = claim_path.to_str().context("claim path")?;
     let witness = witness_path.to_str().context("witness path")?;
     let receipt = receipt_path.to_str().context("receipt path")?;
     let report = success(&command(
@@ -36,17 +35,12 @@ fn prepared_claim_survives_signing_delay_and_spending_but_not_a_reorg() -> Resul
             "433",
             "--minimum-sats",
             "2000000000",
-            "--output",
-            claim,
             "--witness",
             witness,
         ],
     )?)?;
     assert_claim(&node, &report, 433, 433, 2_000_000_000)?;
-    assert_eq!(
-        fs::read(claim)?,
-        Vec::<u8>::from_hex(report["encoded"].as_str().context("encoded")?)?
-    );
+    let claim = report["encoded"].as_str().context("encoded claim")?;
     assert_preparation_rejects_ineligible(&node, &address, &funding, directory.path())?;
 
     // Sign after advancing the tip. No fresh proof for the frozen T can be fetched.
@@ -103,7 +97,7 @@ fn prepared_claim_survives_signing_delay_and_spending_but_not_a_reorg() -> Resul
         );
     }
     assert_eq!(success(&inspect(receipt)?)?, accepted);
-    assert_verify_fails_closed(&node, &receipt_path, &claim_path)?;
+    assert_verify_fails_closed(&node, &receipt_path, claim)?;
 
     // A completed reorg across T invalidates chain acceptance, not the proof seal.
     node.rpc("invalidateblock", &json!([report["claim"]["last"]["hash"]]))?;
@@ -139,21 +133,13 @@ fn prove_dry(
 }
 
 fn assert_tip_only(node: &Node, input: &str, directory: &Path) -> Result<()> {
-    let claim = directory.join("later.bin");
     let witness = directory.join("later.witness");
     rejection(
         &command(
             node,
             "regtest",
             "claim",
-            &[
-                input,
-                "433",
-                "--output",
-                claim.to_str().context("path")?,
-                "--witness",
-                witness.to_str().context("path")?,
-            ],
+            &[input, "433", "--witness", witness.to_str().context("path")?],
         )?,
         "proof block height does not match requested last height",
     );
@@ -166,7 +152,6 @@ fn assert_preparation_rejects_ineligible(
     funding: &Transaction,
     directory: &Path,
 ) -> Result<()> {
-    let output = directory.join("rejected.bin");
     let witness = directory.join("rejected.witness");
     let outpoint = OutPoint::new(funding.compute_txid(), 0).to_string();
     let young = mined(node, 335, &address.script_pubkey())?.to_string();
@@ -187,18 +172,12 @@ fn assert_preparation_rejects_ineligible(
                 "claim",
                 &[
                     args.as_slice(),
-                    &[
-                        "--output",
-                        output.to_str().context("path")?,
-                        "--witness",
-                        witness.to_str().context("path")?,
-                    ],
+                    &["--witness", witness.to_str().context("path")?],
                 ]
                 .concat(),
             )?,
             reason,
         );
-        assert!(!output.exists());
         assert!(!witness.exists());
     }
     Ok(())
@@ -229,20 +208,17 @@ fn funded_node() -> Result<(Node, Address, Transaction)> {
     Ok((node, address, funding))
 }
 
-fn assert_verify_fails_closed(node: &Node, path: &Path, claim_path: &Path) -> Result<()> {
+fn assert_verify_fails_closed(node: &Node, path: &Path, claim: &str) -> Result<()> {
     let receipt = path.to_str().context("receipt path")?;
-    let claim = claim_path.to_str().context("claim path")?;
     // A real proof for C must not satisfy even a weaker but otherwise valid C-prime.
-    let mut changed = fs::read(claim_path)?;
+    let mut changed = STANDARD.decode(claim)?;
     changed[123..131].copy_from_slice(&1_u64.to_le_bytes());
-    let other_claim_path = path.with_file_name("other.bin");
-    fs::write(&other_claim_path, changed)?;
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_greenhold-host"))
         .args([
             "verify",
             receipt,
             "--claim",
-            other_claim_path.to_str().context("path")?,
+            &STANDARD.encode(changed),
             "--network",
             "regtest",
             "--utreexod-rpc",
@@ -305,7 +281,7 @@ fn assert_receipt(report: &Value, file: &[u8]) -> Result<()> {
     receipt.verify(GREENHOLD_GUEST_ID)?;
     assert_eq!(
         receipt.journal.bytes,
-        Vec::<u8>::from_hex(report["encoded"].as_str().context("encoded claim")?)?
+        STANDARD.decode(report["encoded"].as_str().context("encoded claim")?)?
     );
     Ok(())
 }
@@ -324,7 +300,9 @@ fn assert_claim(node: &Node, report: &Value, first: u32, last: u32, minimum: u64
         report["image_id"],
         Digest::from(GREENHOLD_GUEST_ID).to_string()
     );
-    let encoded = Vec::<u8>::from_hex(report["encoded"].as_str().context("encoded claim")?)?;
+    let text = report["encoded"].as_str().context("encoded claim")?;
+    assert_eq!(text.len(), 220);
+    let encoded = STANDARD.decode(text)?;
     assert_eq!(encoded.len(), 163);
     assert_eq!(
         &serde_json::to_value(Claim::try_from(encoded.as_slice())?)?,

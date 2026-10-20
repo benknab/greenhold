@@ -55,26 +55,27 @@ coin to your request. For privacy, use your own node with `--utreexod-rpc`,
 `--utreexod-rpc-user`, and `--utreexod-rpc-password`.
 
 ```sh
-cargo run --locked --release -- claim <TXID:VOUT> --first-height <X> --minimum-sats <M> --output claim.bin --witness coin.witness
+cargo run --locked --release -- claim <TXID:VOUT> --first-height <X> --minimum-sats <M> --witness coin.witness
 ```
 
 ### Prepare and sign
 
 `claim` retrieves the coin and its tip membership proof, fetches the chain context
-at that proof's exact block, and checks eligibility. It writes two files:
+at that proof's exact block, and checks eligibility. It writes `coin.witness`,
+the private binary coin data and membership path. Keep this file private.
 
-- `claim.bin`: the 163-byte canonical public claim.
-- `coin.witness`: the private coin data and membership path. Keep this file private.
-
-It prints JSON containing `claim`, canonical hex `encoded`, the guest `image_id`,
-and the exact `message` to sign. Sign that message with the key for the coin's
+It prints JSON containing readable `claim` details, the Base64 claim in `encoded`,
+the guest `image_id`, and the exact `message` to sign. The `encoded` value is
+220 characters of standard padded Base64 encoding the 163 canonical claim bytes;
+pass it directly to `prove` or `verify --claim`. No claim file is needed.
+Sign `message` with the key for the coin's
 locking script. The message is `greenhold/claim:` followed by the lowercase
 SHA-256 hex digest of the binary claim, with no newline or terminator.
 
 The canonical bytes are `greenhold/claim/v1\0`, the network's 32-byte genesis hash,
 then for X and T a little-endian u32 height and 32-byte block hash, little-endian
 u64 M, and the 32-byte chain-context digest. Block hashes use internal byte order;
-the SHA-256 digest is not reversed. JSON and hex text are not the hash input.
+the SHA-256 digest is not reversed. JSON and Base64 text are not the hash input.
 
 T is the node's tip when the membership proof is captured. Without
 `--first-height`, X is T. Without `--minimum-sats`, M is 1 satoshi. An explicit
@@ -84,19 +85,21 @@ positional T must match the proof's block. Use `--network signet` or
 ### Prove the prepared claim
 
 ```sh
-cargo run --locked --release -- prove claim.bin --witness coin.witness --signature <SIGNATURE> --output claim.receipt
+cargo run --locked --release -- prove '<BASE64_CLAIM>' --witness coin.witness --signature '<SIGNATURE>' --output claim.receipt
 ```
 
 1. The host checks the signature over the claim's derived message against the
    saved coin's script before node access.
 2. The node supplies historical chain state at X and T. The host reconstructs
-   the claim, requires exact equality with `claim.bin`, and checks the saved
+   the claim, requires exact equality with the decoded Base64 claim, and checks the saved
    coin's membership and eligibility against that state.
 3. The guest authenticates the saved coin against that state, checks eligibility,
    constructs the claim, derives its signing message, and verifies the signature
    against the authenticated script. It commits the canonical claim bytes.
 4. The host proves the run and verifies the receipt and its journal before writing
    `claim.receipt`. Its JSON report includes the receipt path and size.
+
+Witness and receipt files use binary formats, without Base64 wrapping.
 
 Use `--dry-run` instead of `--output` to stop after step 3 and write no receipt.
 A dry run also prints the guest cycle count. The cycle count depends on the coin,
@@ -117,13 +120,13 @@ See [`signer/`](signer/) for generating test signatures.
 Use your own node and an independently approved expected claim:
 
 ```sh
-cargo run --locked --release -- verify claim.receipt --claim expected.bin
+cargo run --locked --release -- verify claim.receipt --claim '<EXPECTED_BASE64_CLAIM>'
 ```
 
 1. The host reads the file, up to 1 MiB, and decodes the receipt.
 2. The host checks that the receipt is a succinct proof of this guest's run.
 3. The receipt's claim must name the network from `--network` (`bitcoin` by
-   default) and exactly equal `expected.bin`, including X, T, and M.
+   default) and exactly equal the decoded expected claim, including X, T, and M.
 4. The node supplies its blocks at heights X and T and its Utreexo state at T.
    The host reconstructs the claim from that data and the expected M.
 5. The host accepts the receipt only if the two claims are equal. It then prints

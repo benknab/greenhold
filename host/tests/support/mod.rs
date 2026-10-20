@@ -1,4 +1,5 @@
 use anyhow::{Context, Result, bail};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use bitcoin::{
     BlockHash,
     hashes::{Hash, sha256},
@@ -28,7 +29,7 @@ pub const WALLET_PATH: &str = "m/84'/1'/0'/0/0";
 pub const WALLET_SEED: [u8; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 /// Sign canonical bytes, independently deriving the message from their hash.
 pub fn sign_claim(report: &Value) -> Result<String> {
-    let encoded = Vec::<u8>::from_hex(report["encoded"].as_str().context("claim bytes")?)?;
+    let encoded = STANDARD.decode(report["encoded"].as_str().context("claim bytes")?)?;
     let message = format!("greenhold/claim:{}", sha256::Hash::hash(&encoded));
     assert_eq!(report["message"], message);
     let key = greenhold_signer::derive_key(&WALLET_SEED, &WALLET_PATH.parse()?)?;

@@ -113,9 +113,7 @@ fn discovery_lists_confirmed_coins_across_pages_and_feeds_the_prover() -> Result
 
 fn prove_discovered(node: &Node, outpoint: OutPoint) -> Result<()> {
     let directory = tempfile::tempdir()?;
-    let claim_path = directory.path().join("claim.bin");
     let witness_path = directory.path().join("coin.witness");
-    let claim = claim_path.to_str().context("claim path")?;
     let witness = witness_path.to_str().context("witness path")?;
     let report = success(&command(
         node,
@@ -123,8 +121,6 @@ fn prove_discovered(node: &Node, outpoint: OutPoint) -> Result<()> {
         "claim",
         &[
             &outpoint.to_string(),
-            "--output",
-            claim,
             "--witness",
             witness,
             "--minimum-sats",
@@ -132,6 +128,7 @@ fn prove_discovered(node: &Node, outpoint: OutPoint) -> Result<()> {
         ],
     )?)?;
     let signature = sign_claim(&report)?;
+    let claim = report["encoded"].as_str().context("encoded claim")?;
     let report = success(&command(
         node,
         "regtest",

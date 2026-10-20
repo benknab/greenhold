@@ -13,27 +13,19 @@ const SIGNED: [&str; 4] = [
 
 /// Parse prove arguments after its claim and witness/signature flags.
 fn prove(args: &[&str]) -> clap::error::Result<Cli> {
-    let args = ["host", "prove", "claim.bin"]
+    let args = ["host", "prove", "BASE64"]
         .into_iter()
         .chain(SIGNED)
         .chain(args.iter().copied());
     Cli::try_parse_from(args)
 }
 
-/// Parse claim arguments after its required artifact paths.
+/// Parse claim arguments after its required witness path.
 fn cli(args: &[&str]) -> clap::error::Result<Cli> {
     Cli::try_parse_from(
-        [
-            "host",
-            "claim",
-            OUTPOINT,
-            "--output",
-            "claim.bin",
-            "--witness",
-            "coin.witness",
-        ]
-        .into_iter()
-        .chain(args.iter().copied()),
+        ["host", "claim", OUTPOINT, "--witness", "coin.witness"]
+            .into_iter()
+            .chain(args.iter().copied()),
     )
 }
 
@@ -175,7 +167,7 @@ fn prove_needs_exactly_one_of_output_and_dry_run() -> Result<()> {
 fn prove_needs_a_witness_and_well_formed_signature() -> Result<()> {
     // Replace or drop one flag of SIGNED, then parse a dry run.
     let parse = |flag: &str, value: Option<&str>| -> Result<clap::error::ErrorKind> {
-        let mut args = vec!["host", "prove", "claim.bin", "--dry-run"];
+        let mut args = vec!["host", "prove", "BASE64", "--dry-run"];
         for pair in SIGNED.chunks(2) {
             match (pair, value) {
                 ([name, _], Some(value)) if *name == flag => args.extend([flag, value]),
@@ -211,12 +203,11 @@ fn verify_requires_an_explicit_expected_claim() -> Result<()> {
         clap::error::ErrorKind::MissingRequiredArgument
     );
     let Command::Verify(options) =
-        Cli::try_parse_from(["host", "verify", "claim.receipt", "--claim", "expected.bin"])?
-            .command
+        Cli::try_parse_from(["host", "verify", "claim.receipt", "--claim", "BASE64"])?.command
     else {
         bail!("expected verify command");
     };
-    assert_eq!(options.claim, PathBuf::from("expected.bin"));
+    assert_eq!(options.claim, "BASE64");
     Ok(())
 }
 

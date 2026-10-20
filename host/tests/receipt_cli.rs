@@ -34,7 +34,7 @@ fn verify_and_inspect_reject_bad_receipt_files_before_node_access() -> Result<()
             "verify",
             path,
             "--claim",
-            "expected.bin",
+            "BASE64",
             "--utreexod-rpc",
             "http://127.0.0.1:9/",
             "--utreexod-rpc-user",

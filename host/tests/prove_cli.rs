@@ -1,4 +1,5 @@
 use anyhow::Result;
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use greenhold_core::coin::CoinWitness;
 use greenhold_signer::{Format, ScriptType};
 use std::{fs, process::Command};
@@ -18,7 +19,6 @@ fn claim_and_prove_explain_the_prepared_signing_flow() -> Result<()> {
                 "<OUTPOINT> [LAST_HEIGHT]",
                 "tip-only",
                 "--minimum-sats <SATS>",
-                "--output <FILE>",
                 "--witness <FILE>",
             ],
         ),
@@ -31,7 +31,7 @@ fn claim_and_prove_explain_the_prepared_signing_flow() -> Result<()> {
                 "--dry-run",
             ],
         ),
-        ("verify", vec!["--claim <FILE>"]),
+        ("verify", vec!["--claim <BASE64>"]),
     ] {
         let output = Command::new(binary).args([command, "--help"]).output()?;
         assert!(output.status.success());
@@ -49,9 +49,7 @@ fn prove_checks_the_claim_signature_before_node_access() -> Result<()> {
     let input = serde_json::to_value(input)?;
     let witness: CoinWitness = serde_json::from_value(input["witness"].clone())?;
     let directory = tempfile::tempdir()?;
-    let claim_path = directory.path().join("claim.bin");
     let witness_path = directory.path().join("coin.witness");
-    fs::write(&claim_path, claim.to_bytes())?;
     fs::write(&witness_path, artifacts::encode_witness(&witness)?)?;
     let signature = input["signature"]
         .as_str()
@@ -76,10 +74,9 @@ fn prove_checks_the_claim_signature_before_node_access() -> Result<()> {
         if changed {
             bytes[123] ^= 1;
         } // A different valid M.
-        fs::write(&claim_path, bytes)?;
         let output = Command::new(env!("CARGO_BIN_EXE_greenhold-host"))
             .arg("prove")
-            .arg(&claim_path)
+            .arg(STANDARD.encode(bytes))
             .arg("--witness")
             .arg(&witness_path)
             .args([
@@ -127,14 +124,26 @@ fn artifacts_reject_invalid_versions_trailing_bytes_and_oversize_files() -> Resu
         fs::write(&path, bytes)?;
         assert!(artifacts::read_witness(&path).is_err());
     }
-    fs::write(&path, claim.to_bytes())?;
-    assert_eq!(artifacts::read_claim(&path)?, claim);
+    let encoded = artifacts::encode_claim(&claim);
+    assert_eq!(encoded.len(), 220);
+    assert_eq!(STANDARD.decode(&encoded)?, claim.to_bytes());
+    assert_eq!(artifacts::decode_claim(&encoded)?, claim);
     for bytes in [
         claim.to_bytes()[..162].to_vec(),
+        [claim.to_bytes(), vec![0]].concat(),
         [claim.to_bytes(), vec![0; 32]].concat(),
+        vec![0; 163],
     ] {
-        fs::write(&path, bytes)?;
-        assert!(artifacts::read_claim(&path).is_err());
+        assert!(artifacts::decode_claim(&STANDARD.encode(bytes)).is_err());
+    }
+    for invalid in [
+        "claim.bin".to_owned(),
+        encoded.trim_end_matches('=').to_owned(),
+        format!("{encoded}\n"),
+        "!".repeat(220),
+        format!("{}B==", &encoded[..217]), // Nonzero padding bits.
+    ] {
+        assert!(artifacts::decode_claim(&invalid).is_err());
     }
     Ok(())
 }

@@ -1,17 +1,26 @@
 //! Prepared public claims and private coin witnesses. Neither file is trusted state.
 
 use anyhow::{Context as _, Result, bail};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use bincode::Options as _;
 use greenhold_core::{claim::Claim, coin::CoinWitness};
 use std::{fs::File, io::Read as _, path::Path};
 
-const CLAIM_BYTES: u64 = 163;
+// Standard padded Base64 of the 163-byte canonical claim.
+const CLAIM_CHARS: usize = 220;
 const WITNESS_TAG: &[u8] = b"greenhold/witness/v1\0";
 // A bounded coin script (10 KB), at most 61 sibling hashes, and fixed coin fields.
 const MAX_WITNESS_BYTES: u64 = 16 * 1024;
 
-pub fn read_claim(path: &Path) -> Result<Claim> {
-    let bytes = read(path, CLAIM_BYTES).context("cannot read claim")?;
+pub fn encode_claim(claim: &Claim) -> String {
+    STANDARD.encode(claim.to_bytes())
+}
+
+pub fn decode_claim(encoded: &str) -> Result<Claim> {
+    if encoded.len() != CLAIM_CHARS {
+        bail!("claim must be {CLAIM_CHARS} characters of padded Base64");
+    }
+    let bytes = STANDARD.decode(encoded).context("invalid claim Base64")?;
     Claim::try_from(bytes.as_slice()).context("claim decoding")
 }
 

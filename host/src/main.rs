@@ -12,7 +12,6 @@ mod verify;
 mod test_support;
 
 use anyhow::{Context as _, Result, bail};
-use bitcoin::hex::DisplayHex;
 use clap::Parser;
 use greenhold_core::{
     claim::Claim,
@@ -49,7 +48,7 @@ fn run(cli: cli::Cli) -> Result<()> {
         cli::Command::Prove(options) => prove(options)?,
         cli::Command::Verify(options) => {
             let receipt = receipt::read(&options.receipt)?;
-            let expected = artifacts::read_claim(&options.claim)?;
+            let expected = artifacts::decode_claim(&options.claim)?;
             let rpc = options.connections.rpc_config()?;
             let claim = verify::claim(&receipt, options.network, &expected, &rpc)?;
             println!("{}", serde_json::to_string_pretty(&report(&claim))?);
@@ -66,9 +65,6 @@ fn run(cli: cli::Cli) -> Result<()> {
 }
 
 fn prepare(options: &cli::ClaimOptions) -> Result<()> {
-    if options.output == options.witness {
-        bail!("claim and witness output paths must differ");
-    }
     let network = options.context.network.into();
     let input = context::Input::new(
         network,
@@ -81,13 +77,12 @@ fn prepare(options: &cli::ClaimOptions) -> Result<()> {
     let claim = Claim::new(&context, options.minimum_sats);
     let witness = artifacts::encode_witness(coin.witness())?;
     fs::write(&options.witness, witness).context("cannot write witness")?;
-    fs::write(&options.output, claim.to_bytes()).context("cannot write claim")?;
     println!("{}", serde_json::to_string_pretty(&report(&claim))?);
     Ok(())
 }
 
 fn prove(options: cli::ProveOptions) -> Result<()> {
-    let claim = artifacts::read_claim(&options.claim)?;
+    let claim = artifacts::decode_claim(&options.claim)?;
     if claim.network() != options.network {
         bail!("claim names {}, not {}", claim.network(), options.network);
     }
@@ -126,11 +121,11 @@ fn prove(options: cli::ProveOptions) -> Result<()> {
     Ok(())
 }
 
-/// The public claim in JSON and canonical hex, and the guest that commits it.
+/// The public claim in JSON and Base64, and the guest that commits it.
 fn report(claim: &Claim) -> serde_json::Value {
     serde_json::json!({
         "claim": claim,
-        "encoded": claim.to_bytes().as_hex().to_string(),
+        "encoded": artifacts::encode_claim(claim),
         "message": claim.signing_message(),
         "image_id": guest::image_id().to_string(),
     })

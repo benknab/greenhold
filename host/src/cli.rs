@@ -52,9 +52,9 @@ pub struct VerifyOptions {
     /// Receipt file to verify.
     pub receipt: PathBuf,
 
-    /// Independently approved canonical claim file.
-    #[arg(long, value_name = "FILE")]
-    pub claim: PathBuf,
+    /// Independently approved claim as standard padded Base64.
+    #[arg(long, value_name = "BASE64")]
+    pub claim: String,
 
     /// Bitcoin network the claim must name: bitcoin, signet, or regtest.
     #[arg(long, default_value = "bitcoin")]
@@ -72,8 +72,8 @@ pub struct InspectOptions {
 
 #[derive(Debug, Args)]
 pub struct ProveOptions {
-    /// Canonical claim file produced by claim.
-    pub claim: PathBuf,
+    /// Standard padded Base64 claim from the claim command's encoded field.
+    pub claim: String,
 
     /// Private coin witness captured with the claim.
     #[arg(long, value_name = "FILE")]
@@ -107,10 +107,6 @@ pub struct ClaimOptions {
     /// Minimum coin value M in satoshis, up to 2100000000000000.
     #[arg(long, value_name = "SATS", default_value = "1")]
     pub minimum_sats: MinimumAmount,
-
-    /// Canonical binary claim file to write. Replaces an existing file.
-    #[arg(long, value_name = "FILE")]
-    pub output: PathBuf,
 
     /// Private coin witness file to write. Replaces an existing file.
     #[arg(long, value_name = "FILE")]
