@@ -55,10 +55,11 @@ This command builds the host and guest. It then proves the claim for one coin:
 4. The host proves the guest run. It verifies the receipt against the guest image
    ID and checks that the receipt contains the expected claim.
 5. The host writes the receipt to `<FILE>`. It prints the public claim as JSON and
-   as canonical bytes in hex, the guest image ID, the cycle count, and the receipt
-   size.
+   as canonical bytes in hex, the guest image ID, and the receipt size.
 
 Use `--dry-run` instead of `--output` to stop after step 3 and write no receipt.
+A dry run also prints the guest cycle count. The cycle count depends on the coin,
+so do not share it.
 
 The output contains no coin data. T is the node's current tip, because the node
 proves membership only at its tip. Without `--first-height`, X is T. Without

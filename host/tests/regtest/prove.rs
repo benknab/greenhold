@@ -176,7 +176,12 @@ fn assert_claim(node: &Node, report: &Value, first: u32, last: u32, minimum: u64
     // The claim came from the guest's journal, so the run must name this guest build.
     let image_id = Digest::from(GREENHOLD_GUEST_ID).to_string();
     assert_eq!(report["image_id"], image_id);
-    assert!(report["cycles"].as_u64().context("cycle count")? > 0);
+    // The cycle count depends on the coin, so a report beside a shareable receipt omits it.
+    if report.get("receipt").is_some() {
+        assert!(report.get("cycles").is_none());
+    } else {
+        assert!(report["cycles"].as_u64().context("cycle count")? > 0);
+    }
     let encoded = Vec::<u8>::from_hex(report["encoded"].as_str().context("encoded claim")?)?;
     assert_eq!(
         &serde_json::to_value(Claim::try_from(encoded.as_slice())?)?,
