@@ -2,6 +2,7 @@ use crate::connection::utreexod_rpc;
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand};
 use greenhold_core::{eligibility::MinimumAmount, network::SupportedNetwork};
+use std::path::PathBuf;
 use url::Url;
 
 pub const DEFAULT_RPC: &str = "https://utreexo.hospitablealpaca.com/";
@@ -19,21 +20,29 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Check one coin's eligibility and print the public claim (node proofs are tip-only).
-    Claim(ClaimOptions),
+    /// Prove one coin's public claim and write the receipt (node proofs are tip-only).
+    Prove(ProveOptions),
     /// Test tool: fetch headers and historical Utreexo state. Replaced by verify.
     #[command(hide = true)]
     Context(ContextOptions),
 }
 
 #[derive(Debug, Args)]
-pub struct ClaimOptions {
+pub struct ProveOptions {
     /// Candidate output as TXID:VOUT (zero-based output index).
     pub outpoint: bitcoin::OutPoint,
 
     /// Minimum coin value M in satoshis, up to 2100000000000000.
     #[arg(long, value_name = "SATS", default_value = "1")]
     pub minimum_sats: MinimumAmount,
+
+    /// Receipt file to write. Replaces an existing file.
+    #[arg(long, value_name = "FILE", required_unless_present = "dry_run")]
+    pub output: Option<PathBuf>,
+
+    /// Run the guest without proving, and write no receipt.
+    #[arg(long, conflicts_with = "output")]
+    pub dry_run: bool,
 
     #[command(flatten)]
     pub context: ContextOptions,
@@ -45,7 +54,7 @@ pub struct ContextOptions {
     #[arg(long, default_value = "bitcoin")]
     pub network: SupportedNetwork,
 
-    /// Last block height T. Defaults to the RPC tip (the proof's block for claim).
+    /// Last block height T. Defaults to the RPC tip (the proof's block for prove).
     pub last_height: Option<u32>,
 
     /// First block height X. Defaults to T for a single-block context.

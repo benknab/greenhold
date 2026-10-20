@@ -1833,6 +1833,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
+ "bincode",
  "bip324",
  "bitcoin",
  "clap",
@@ -1842,6 +1843,7 @@ dependencies = [
  "rustls",
  "serde",
  "serde_json",
+ "tempfile",
  "testcontainers",
  "ureq",
  "url",

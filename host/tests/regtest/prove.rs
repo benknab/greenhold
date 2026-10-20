@@ -1,4 +1,4 @@
-use crate::support::{Node, command, context, image, rejection, success};
+use crate::support::{Node, command, command_with_timeout, context, image, rejection, success};
 use anyhow::{Context, Result};
 use bitcoin::{
     Address, Amount, Network, OutPoint, ScriptBuf, Transaction, TxIn, TxOut, Witness,
@@ -9,8 +9,9 @@ use bitcoin::{
 };
 use greenhold_core::claim::Claim;
 use greenhold_guest_builder::GREENHOLD_GUEST_ID;
-use risc0_zkvm::sha::Digest;
+use risc0_zkvm::{Receipt, sha::Digest};
 use serde_json::{Value, json};
+use std::{fs, time::Duration};
 
 fn spend(outpoint: OutPoint, values: &[u64], script: &ScriptBuf) -> Transaction {
     Transaction {
@@ -55,7 +56,7 @@ fn broadcast(node: &Node, transaction: &Transaction) -> Result<()> {
 
 #[test]
 #[ignore = "requires Docker; runs Utreexod nodes"]
-fn claim_uses_real_transactions_and_rejects_ineligible_coins() -> Result<()> {
+fn prove_uses_real_transactions_and_rejects_ineligible_coins() -> Result<()> {
     let script = ScriptBuf::from_bytes(vec![0x51]);
     let address = Address::p2wsh(&script, Network::Regtest);
     let node = Node::start(
@@ -77,20 +78,41 @@ fn claim_uses_real_transactions_and_rejects_ineligible_coins() -> Result<()> {
     broadcast(&node, &funding)?;
     node.rpc("generate", &json!([1]))?;
     let input = OutPoint::new(funding.compute_txid(), 0).to_string();
-    let claim = |args: &[&str]| command(&node, "regtest", "claim", args);
-    let report = success(&claim(&[
-        &input,
-        "433",
-        "--first-height",
-        "433",
-        "--minimum-sats",
-        "2000000000",
-    ])?)?;
+    let claim =
+        |args: &[&str]| command(&node, "regtest", "prove", &[args, &["--dry-run"]].concat());
+    let directory = tempfile::tempdir()?;
+    let path = directory.path().join("claim.receipt");
+    let output = path.to_str().context("receipt path")?;
+    // The only real proof in this scenario. The other runs stop before proving.
+    let report = success(&command_with_timeout(
+        &node,
+        "regtest",
+        "prove",
+        &[
+            &input,
+            "433",
+            "--first-height",
+            "433",
+            "--minimum-sats",
+            "2000000000",
+            "--output",
+            output,
+        ],
+        Duration::from_mins(10),
+    )?)?;
     assert_claim(&node, &report, 433, 433, 2_000_000_000)?;
+    assert_receipt(&report, &fs::read(&path)?)?;
+    fs::remove_file(&path)?;
     rejection(
-        &claim(&[&input, "--minimum-sats", "2000000001"])?,
+        &command(
+            &node,
+            "regtest",
+            "prove",
+            &[&input, "--minimum-sats", "2000000001", "--output", output],
+        )?,
         "below the minimum",
     );
+    assert!(!path.exists(), "a rejected coin must not write a receipt");
     // Created at 335: T - 335 = 98 at 433, so block 434 could not spend it.
     let young = mined(&node, 335, &address.script_pubkey())?.to_string();
     rejection(&claim(&[&young])?, "coinbase coin is not spendable");
@@ -118,6 +140,19 @@ fn claim_uses_real_transactions_and_rejects_ineligible_coins() -> Result<()> {
     let survivor = OutPoint::new(funding.compute_txid(), 1).to_string();
     let report = success(&claim(&[&survivor, "--minimum-sats", "2999990000"])?)?;
     assert_claim(&node, &report, 435, 435, 2_999_990_000)?;
+    Ok(())
+}
+
+/// Decode the receipt file independently and check that it proves the reported claim.
+fn assert_receipt(report: &Value, file: &[u8]) -> Result<()> {
+    assert_eq!(report["receipt_bytes"], file.len());
+    let encoded = file
+        .strip_prefix(b"greenhold/receipt/v1\0")
+        .context("receipt tag")?;
+    let receipt: Receipt = bincode::deserialize(encoded)?;
+    receipt.verify(GREENHOLD_GUEST_ID)?;
+    let claim = Vec::<u8>::from_hex(report["encoded"].as_str().context("encoded claim")?)?;
+    assert_eq!(receipt.journal.bytes, claim);
     Ok(())
 }
 

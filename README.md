@@ -38,27 +38,32 @@ SHA-256 hash.
 
 ## Usage
 
-Warning: the `claim` command sends your outpoint to the Utreexod node. The default
+Warning: the `prove` command sends your outpoint to the Utreexod node. The default
 public node can link that coin to your request. To keep the coin private, use your
 own node with `--utreexod-rpc`, `--utreexod-rpc-user`, and `--utreexod-rpc-password`.
 
 ```sh
-cargo run --locked --release -- claim <TXID:VOUT> --first-height <X> --minimum-sats <M>
+cargo run --locked --release -- prove <TXID:VOUT> --first-height <X> --minimum-sats <M> --output <FILE>
 ```
 
-This command builds the host and guest. It then checks one coin and prints the claim:
+This command builds the host and guest. It then proves the claim for one coin:
 
 1. The node supplies the coin, its Utreexo membership proof, and the chain state.
 2. The host checks that the coin is eligible for the claim.
 3. The host runs the guest in the zkVM without proving. The guest checks the
    coin's membership and eligibility again and commits the claim.
-4. The host prints the public claim as JSON and as canonical bytes in hex. It also
-   prints the guest image ID and the cycle count.
+4. The host proves the guest run. It verifies the receipt against the guest image
+   ID and checks that the receipt contains the expected claim.
+5. The host writes the receipt to `<FILE>`. It prints the public claim as JSON and
+   as canonical bytes in hex, the guest image ID, the cycle count, and the receipt
+   size.
 
-The command does not make a receipt yet. The output contains no coin data. T is
-the node's current tip, because the node proves membership only at its tip.
-Without `--first-height`, X is T. Without `--minimum-sats`, M is 1 satoshi. Use
-`--network signet` or `--network regtest` for other networks.
+Use `--dry-run` instead of `--output` to stop after step 3 and write no receipt.
+
+The output contains no coin data. T is the node's current tip, because the node
+proves membership only at its tip. Without `--first-height`, X is T. Without
+`--minimum-sats`, M is 1 satoshi. Use `--network signet` or `--network regtest`
+for other networks.
 
 ## Development
 

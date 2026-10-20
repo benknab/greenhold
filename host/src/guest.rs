@@ -1,7 +1,7 @@
 use anyhow::{Context as _, Result, bail};
 use greenhold_core::{claim::Claim, input::ClaimInput};
 use greenhold_guest_builder::{GREENHOLD_GUEST_ELF, GREENHOLD_GUEST_ID};
-use risc0_zkvm::{Executor, ExecutorEnv, ExitCode, LocalProver, sha::Digest};
+use risc0_zkvm::{Executor, ExecutorEnv, ExitCode, LocalProver, Prover, Receipt, sha::Digest};
 
 #[must_use]
 pub fn image_id() -> Digest {
@@ -18,9 +18,30 @@ pub fn execute(input: &ClaimInput, expected: &Claim) -> Result<u64> {
     if session.exit_code != ExitCode::Halted(0) {
         bail!("guest rejected the claim input ({:?})", session.exit_code);
     }
-    let claim = Claim::try_from(session.journal.bytes.as_slice()).context("guest journal")?;
+    check_journal(&session.journal.bytes, expected)?;
+    Ok(session.cycles())
+}
+
+/// Prove the guest and verify the receipt against this guest's image ID. The receipt's
+/// journal must be exactly the claim the host expects.
+pub fn prove(input: &ClaimInput, expected: &Claim) -> Result<Receipt> {
+    let env = ExecutorEnv::builder().write(input)?.build()?;
+    let receipt = LocalProver::new("local")
+        .prove(env, GREENHOLD_GUEST_ELF)
+        .context("guest proving failed")?
+        .receipt;
+    // Verification requires exit code Halted(0), so a rejected input cannot pass.
+    receipt
+        .verify(image_id())
+        .context("receipt verification failed")?;
+    check_journal(&receipt.journal.bytes, expected)?;
+    Ok(receipt)
+}
+
+fn check_journal(journal: &[u8], expected: &Claim) -> Result<()> {
+    let claim = Claim::try_from(journal).context("guest journal")?;
     if &claim != expected {
         bail!("guest claim does not match the host claim");
     }
-    Ok(session.cycles())
+    Ok(())
 }

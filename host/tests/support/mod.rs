@@ -119,6 +119,16 @@ pub fn context(rpc: &Node, network: &str, heights: &[&str]) -> Result<Output> {
 }
 
 pub fn command(rpc: &Node, network: &str, command: &str, args: &[&str]) -> Result<Output> {
+    command_with_timeout(rpc, network, command, args, Duration::from_secs(30))
+}
+
+pub fn command_with_timeout(
+    rpc: &Node,
+    network: &str,
+    command: &str,
+    args: &[&str],
+    timeout: Duration,
+) -> Result<Output> {
     let mut child = Command::new(env!("CARGO_BIN_EXE_greenhold-host"))
         .args([
             command,
@@ -135,7 +145,7 @@ pub fn command(rpc: &Node, network: &str, command: &str, args: &[&str]) -> Resul
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;
-    if child.wait_timeout(Duration::from_secs(30))?.is_none() {
+    if child.wait_timeout(timeout)?.is_none() {
         child.kill()?;
         child.wait()?;
         bail!("{command} command timed out");
