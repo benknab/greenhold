@@ -1,4 +1,9 @@
 use anyhow::{Context, Result, bail};
+use bitcoin::{
+    BlockHash,
+    hashes::{Hash, sha256},
+    hex::FromHex,
+};
 use serde_json::{Value, json};
 use std::{
     process::{Command, Output, Stdio},
@@ -114,8 +119,44 @@ pub fn wait_for(description: &str, mut ready: impl FnMut() -> Result<bool>) -> R
     }
 }
 
-pub fn context(rpc: &Node, network: &str, heights: &[&str]) -> Result<Output> {
-    command(rpc, network, "context", heights)
+/// Independent encoding of the public context commitment from raw node data.
+/// Do not call `ChainContext::digest` or the production RPC client as the oracle.
+pub fn context_digest(node: &Node, first: u32, last: u32) -> Result<String> {
+    let first_hash = node.rpc("getblockhash", &json!([first]))?;
+    let last_hash = node.rpc("getblockhash", &json!([last]))?;
+    let roots = node.rpc("getutreexoroots", &json!([last_hash]))?;
+    let leaves = roots["numleaves"].as_u64().context("missing leaf count")?;
+    assert!(leaves > 0, "the scenario must have a nonempty accumulator");
+    let roots: Vec<Vec<u8>> = roots["roots"]
+        .as_array()
+        .context("missing roots")?
+        .iter()
+        .map(|root| Ok(Vec::from_hex(root.as_str().context("root is not hex")?)?))
+        .collect::<Result<_>>()?;
+    let genesis = node.rpc("getblockhash", &json!([0]))?;
+    let genesis: BlockHash = genesis.as_str().context("missing genesis hash")?.parse()?;
+    let mut preimage = b"greenhold/chain-context/v1\0".to_vec();
+    preimage.extend(genesis.to_byte_array());
+    for (height, hash) in [(first, first_hash), (last, last_hash)] {
+        let header = node.rpc("getblockheader", &json!([hash, false]))?;
+        preimage.extend(height.to_le_bytes());
+        preimage.extend(Vec::<u8>::from_hex(
+            header.as_str().context("missing header")?,
+        )?);
+    }
+    preimage.extend(leaves.to_le_bytes());
+    preimage.extend(u32::try_from(roots.len())?.to_le_bytes());
+    for root in roots {
+        preimage.extend(root);
+    }
+    Ok(sha256::Hash::hash(&preimage).to_string())
+}
+
+/// Run `inspect`, which takes no network or node flags.
+pub fn inspect(receipt: &str) -> Result<Output> {
+    Ok(Command::new(env!("CARGO_BIN_EXE_greenhold-host"))
+        .args(["inspect", receipt])
+        .output()?)
 }
 
 pub fn command(rpc: &Node, network: &str, command: &str, args: &[&str]) -> Result<Output> {

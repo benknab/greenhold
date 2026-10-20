@@ -48,7 +48,15 @@ fn claim_bytes_and_json_follow_the_documented_layout() -> Result<()> {
     expected.extend(12_345u64.to_le_bytes());
     expected.extend(digest.to_byte_array());
     assert_eq!(claim.to_bytes(), expected);
-    assert_eq!(Claim::try_from(expected.as_slice())?, claim);
+    let parsed = Claim::try_from(expected.as_slice())?;
+    assert_eq!(parsed, claim);
+    // A verifier rebuilds the claim from the network, heights, and minimum it names.
+    assert_eq!(Network::from(parsed.network()), Network::Regtest);
+    let rebuilt = Claim::new(
+        &context(parsed.first_height(), parsed.last_height())?,
+        parsed.minimum_sats(),
+    );
+    assert_eq!(rebuilt, parsed);
     assert_eq!(
         serde_json::to_value(&claim)?,
         json!({

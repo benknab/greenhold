@@ -66,6 +66,35 @@ proves membership only at its tip. Without `--first-height`, X is T. Without
 `--minimum-sats`, M is 1 satoshi. Use `--network signet` or `--network regtest`
 for other networks.
 
+To check a receipt from another person, use your own node:
+
+```sh
+cargo run --locked --release -- verify <FILE>
+```
+
+1. The host reads the file, up to 1 MiB, and decodes the receipt.
+2. The host checks that the receipt is a succinct proof of this guest's run.
+3. The host reads the claim from the receipt. The claim must name the network
+   from `--network`, which is `bitcoin` by default.
+4. The node supplies its blocks at heights X and T and its Utreexo state at T.
+   The host builds the expected claim from that data and the claim's M.
+5. The host accepts the receipt only if the two claims are equal. It then prints
+   the claim.
+
+If the node cannot supply the state at T, verification fails. T can be an old
+block, so the node must keep historical Utreexo roots. The coin can be spent
+after T, because the claim is about T.
+
+Check the printed X, T, and M yourself. `verify` accepts any eligible claim
+that matches the chain, including one with a lower M than you expect.
+
+`inspect <FILE>` does steps 1 to 3 and prints the claim without node access. It
+does not check the claim against chain state, so do not accept a claim from
+`inspect` alone.
+
+The guest does not check the BIP-322 signature yet. Until it does, a receipt
+does not prove that the coin's script authorized the claim.
+
 ## Privacy
 
 The receipt hides the coin only as well as RISC Zero hides guest inputs.

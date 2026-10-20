@@ -51,6 +51,28 @@ impl Claim {
         }
     }
 
+    #[must_use]
+    pub fn network(&self) -> SupportedNetwork {
+        self.network
+    }
+
+    /// Lookup input for X. A verifier fetches its own block at this height.
+    #[must_use]
+    pub fn first_height(&self) -> u32 {
+        self.first.height
+    }
+
+    /// Lookup input for T. A verifier fetches its own block at this height.
+    #[must_use]
+    pub fn last_height(&self) -> u32 {
+        self.last.height
+    }
+
+    #[must_use]
+    pub fn minimum_sats(&self) -> MinimumAmount {
+        self.minimum_sats
+    }
+
     /// Fixed-length canonical bytes: the tag, the network's genesis hash, then for
     /// X and T a LE u32 height and 32-byte block hash, LE u64 M, and the context digest.
     /// Hashes use internal byte order, not reversed display order.

@@ -1,4 +1,7 @@
-use crate::support::{Node, command, command_with_timeout, context, image, rejection, success};
+use crate::support::{
+    MINING_ADDRESS, Node, command, command_with_timeout, context_digest, image, inspect, rejection,
+    success,
+};
 use anyhow::{Context, Result};
 use bitcoin::{
     Address, Amount, Network, OutPoint, ScriptBuf, Transaction, TxIn, TxOut, Witness,
@@ -11,7 +14,10 @@ use greenhold_core::claim::Claim;
 use greenhold_guest_builder::GREENHOLD_GUEST_ID;
 use risc0_zkvm::{InnerReceipt, Receipt, sha::Digest};
 use serde_json::{Value, json};
-use std::{fs, time::Duration};
+use std::{fs, path::Path, time::Duration};
+
+/// The receipt file tag, written independently of the production encoder.
+const TAG: &[u8] = b"greenhold/receipt/v1\0";
 
 fn spend(outpoint: OutPoint, values: &[u64], script: &ScriptBuf) -> Transaction {
     Transaction {
@@ -56,7 +62,7 @@ fn broadcast(node: &Node, transaction: &Transaction) -> Result<()> {
 
 #[test]
 #[ignore = "requires Docker; runs Utreexod nodes"]
-fn prove_uses_real_transactions_and_rejects_ineligible_coins() -> Result<()> {
+fn prove_and_verify_use_real_transactions_and_reject_ineligible_coins() -> Result<()> {
     let script = ScriptBuf::from_bytes(vec![0x51]);
     let address = Address::p2wsh(&script, Network::Regtest);
     let node = Node::start(
@@ -82,7 +88,7 @@ fn prove_uses_real_transactions_and_rejects_ineligible_coins() -> Result<()> {
         |args: &[&str]| command(&node, "regtest", "prove", &[args, &["--dry-run"]].concat());
     let directory = tempfile::tempdir()?;
     let path = directory.path().join("claim.receipt");
-    let output = path.to_str().context("receipt path")?;
+    let receipt = path.to_str().context("receipt path")?;
     // The only real proof in this scenario. The other runs stop before proving.
     let report = success(&command_with_timeout(
         &node,
@@ -96,23 +102,40 @@ fn prove_uses_real_transactions_and_rejects_ineligible_coins() -> Result<()> {
             "--minimum-sats",
             "2000000000",
             "--output",
-            output,
+            receipt,
         ],
         Duration::from_mins(10),
     )?)?;
     assert_claim(&node, &report, 433, 433, 2_000_000_000)?;
     assert_receipt(&report, &fs::read(&path)?)?;
-    fs::remove_file(&path)?;
+    let accepted = json!({
+        "claim": report["claim"],
+        "encoded": report["encoded"],
+        "image_id": report["image_id"],
+    });
+    let verify =
+        |node: &Node, network: &str, receipt: &str| command(node, network, "verify", &[receipt]);
+    assert_eq!(success(&verify(&node, "regtest", receipt)?)?, accepted);
+    assert_eq!(success(&inspect(receipt)?)?, accepted);
+    rejection(
+        &verify(&node, "bitcoin", receipt)?,
+        "receipt claims regtest, not bitcoin",
+    );
+    let rejected_path = directory.path().join("rejected.receipt");
+    let rejected = rejected_path.to_str().context("receipt path")?;
     rejection(
         &command(
             &node,
             "regtest",
             "prove",
-            &[&input, "--minimum-sats", "2000000001", "--output", output],
+            &[&input, "--minimum-sats", "2000000001", "--output", rejected],
         )?,
         "below the minimum",
     );
-    assert!(!path.exists(), "a rejected coin must not write a receipt");
+    assert!(
+        !rejected_path.exists(),
+        "a rejected coin must not write a receipt"
+    );
     // Created at 335: T - 335 = 98 at 433, so block 434 could not spend it.
     let young = mined(&node, 335, &address.script_pubkey())?.to_string();
     rejection(&claim(&[&young])?, "coinbase coin is not spendable");
@@ -121,8 +144,6 @@ fn prove_uses_real_transactions_and_rejects_ineligible_coins() -> Result<()> {
     rejection(&claim(&[&bad_index])?, "absent from the confirmed UTXO set");
 
     node.rpc("generate", &json!([1]))?;
-    // A verifier rebuilds the claim's state from its node after the tip moves on.
-    assert_claim(&node, &report, 433, 433, 2_000_000_000)?;
     let mature = success(&claim(&[&young, "--first-height", "335"])?)?;
     assert_claim(&node, &mature, 335, 434, 1)?;
     rejection(
@@ -140,15 +161,55 @@ fn prove_uses_real_transactions_and_rejects_ineligible_coins() -> Result<()> {
     let survivor = OutPoint::new(funding.compute_txid(), 1).to_string();
     let report = success(&claim(&[&survivor, "--minimum-sats", "2999990000"])?)?;
     assert_claim(&node, &report, 435, 435, 2_999_990_000)?;
+
+    // T is now historical, and the proved coin is spent. The claim was about T.
+    assert_eq!(success(&verify(&node, "regtest", receipt)?)?, accepted);
+    assert_verify_fails_closed(&node, &path)
+}
+
+/// Reject a changed receipt, another chain, and a node without historical roots.
+fn assert_verify_fails_closed(node: &Node, path: &Path) -> Result<()> {
+    let receipt = path.to_str().context("receipt path")?;
+    let verify = |node: &Node, receipt: &str| command(node, "regtest", "verify", &[receipt]);
+    // A changed journal no longer matches the seal.
+    let mut tampered: Receipt = bincode::deserialize(&fs::read(path)?[TAG.len()..])?;
+    *tampered.journal.bytes.last_mut().context("empty journal")? ^= 1;
+    let mut file = TAG.to_vec();
+    file.extend(bincode::serialize(&tampered)?);
+    let tampered_path = path.with_file_name("tampered.receipt");
+    fs::write(&tampered_path, file)?;
+    let tampered = tampered_path.to_str().context("receipt path")?;
+    rejection(&verify(node, tampered)?, "receipt verification failed");
+    rejection(&inspect(tampered)?, "receipt verification failed");
+    // Same network and heights, but a different chain: its blocks rebuild another claim.
+    let other = Node::start(
+        image()?,
+        &[
+            "--utreexoproofindex".into(),
+            "--utreexoproofindexmaxmemory=250".into(),
+            format!("--miningaddr={MINING_ADDRESS}"),
+        ],
+        None,
+    )?;
+    other.rpc("generate", &json!([433]))?;
+    rejection(
+        &verify(&other, receipt)?,
+        "receipt claim does not match the node's chain state",
+    );
+    // Same chain, but deliberately no accumulator index. Verification must fail.
+    let unindexed = Node::start(image()?, &["--noutreexo".into()], Some(node))?;
+    unindexed.wait_for_block(node, 435)?;
+    rejection(
+        &verify(&unindexed, receipt)?,
+        "cannot retrieve Utreexo state",
+    );
     Ok(())
 }
 
 /// Decode the receipt file independently and check that it proves the reported claim.
 fn assert_receipt(report: &Value, file: &[u8]) -> Result<()> {
     assert_eq!(report["receipt_bytes"], file.len());
-    let encoded = file
-        .strip_prefix(b"greenhold/receipt/v1\0")
-        .context("receipt tag")?;
+    let encoded = file.strip_prefix(TAG).context("receipt tag")?;
     let receipt: Receipt = bincode::deserialize(encoded)?;
     // Composite receipts leak the execution length, which depends on the coin.
     assert!(matches!(receipt.inner, InnerReceipt::Succinct(_)));
@@ -167,12 +228,7 @@ fn assert_claim(node: &Node, report: &Value, first: u32, last: u32, minimum: u64
         assert_eq!(block["hash"], node.rpc("getblockhash", &json!([height]))?);
     }
     assert_eq!(claim["minimum_sats"], minimum);
-    let fetched = success(&context(
-        node,
-        "regtest",
-        &[&last.to_string(), "--first-height", &first.to_string()],
-    )?)?;
-    assert_eq!(claim["context_digest"], fetched["context_digest"]);
+    assert_eq!(claim["context_digest"], context_digest(node, first, last)?);
     // The claim came from the guest's journal, so the run must name this guest build.
     let image_id = Digest::from(GREENHOLD_GUEST_ID).to_string();
     assert_eq!(report["image_id"], image_id);

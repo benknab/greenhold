@@ -4,6 +4,7 @@ mod connection;
 mod context;
 mod guest;
 mod receipt;
+mod verify;
 
 #[cfg(test)]
 mod test_support;
@@ -38,11 +39,7 @@ fn run(cli: cli::Cli) -> Result<()> {
             let input = ClaimInput::new(context, coin.witness().clone(), options.minimum_sats);
             // Execution is fast, so a rejected input fails before the slow proving step.
             let cycles = guest::execute(&input, &claim)?;
-            let mut report = serde_json::json!({
-                "claim": claim,
-                "encoded": claim.to_bytes().as_hex().to_string(),
-                "image_id": guest::image_id().to_string(),
-            });
+            let mut report = report(&claim);
             if let Some(path) = options.output {
                 let bytes = receipt::encode(&guest::prove(&input, &claim)?)?;
                 fs::write(&path, &bytes)
@@ -56,25 +53,26 @@ fn run(cli: cli::Cli) -> Result<()> {
             }
             println!("{}", serde_json::to_string_pretty(&report)?);
         }
-        cli::Command::Context(options) => {
-            let input = context::Input::new(
-                options.network.into(),
-                options.first_height,
-                options.last_height,
-            )?;
+        cli::Command::Verify(options) => {
+            let receipt = receipt::read(&options.receipt)?;
             let rpc = options.connections.rpc_config()?;
-            let context = context::fetch(input, &rpc)?;
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&serde_json::json!({
-                    "network": context.network(),
-                    "first_block_hash": context.first().hash(),
-                    "last_block_hash": context.last().hash(),
-                    "context": context,
-                    "context_digest": context.digest(),
-                }))?
-            );
+            let claim = verify::claim(&receipt, options.network, &rpc)?;
+            println!("{}", serde_json::to_string_pretty(&report(&claim))?);
+        }
+        cli::Command::Inspect(options) => {
+            let claim = guest::verify(&receipt::read(&options.receipt)?)?;
+            eprintln!("Proof checked. Chain state not checked: use verify to accept the claim.");
+            println!("{}", serde_json::to_string_pretty(&report(&claim))?);
         }
     }
     Ok(())
+}
+
+/// The public claim in JSON and canonical hex, and the guest that commits it.
+fn report(claim: &Claim) -> serde_json::Value {
+    serde_json::json!({
+        "claim": claim,
+        "encoded": claim.to_bytes().as_hex().to_string(),
+        "image_id": guest::image_id().to_string(),
+    })
 }

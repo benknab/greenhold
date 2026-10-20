@@ -1,5 +1,5 @@
 # Native trust boundaries. Guest execution and real-node checks run separately.
-examine_globs = ["core/src/context.rs", "core/src/network.rs", "core/src/coin.rs", "core/src/eligibility.rs", "core/src/claim.rs", "core/src/input.rs", "host/src/coin.rs", "host/src/connection/utreexod_rpc/mod.rs", "host/src/connection/utreexod_rpc/client.rs", "host/src/connection/utreexod_rpc/responses.rs", "host/src/context.rs", "host/src/connection/peer/mod.rs"]
+examine_globs = ["core/src/context.rs", "core/src/network.rs", "core/src/coin.rs", "core/src/eligibility.rs", "core/src/claim.rs", "core/src/input.rs", "host/src/coin.rs", "host/src/receipt.rs", "host/src/connection/utreexod_rpc/mod.rs", "host/src/connection/utreexod_rpc/client.rs", "host/src/connection/utreexod_rpc/responses.rs", "host/src/context.rs", "host/src/connection/peer/mod.rs"]
 exclude_globs = ["**/tests/**", "**/tests.rs"]
 # Equivalent mutant: the shifted height's low bit is zero, so `|` and `^` agree.
 exclude_re = ['replace \| with \^ in Coin::leaf_hash']
@@ -7,6 +7,6 @@ test_package = ["greenhold-core", "greenhold-host"]
 # Debug builds rebuild faster for each mutant.
 additional_cargo_args = ["--locked"]
 # Exercise native unit tests and the core contract, without rebuilding the node harness.
-additional_cargo_test_args = ["--lib", "--bins", "--test=context"]
+additional_cargo_test_args = ["--lib", "--bins", "--test=context", "--test=receipt_cli"]
 minimum_test_timeout = 30
 timeout_multiplier = 5

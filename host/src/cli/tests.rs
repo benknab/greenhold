@@ -1,16 +1,26 @@
 use super::*;
 use bitcoin::Network;
 
+const OUTPOINT: &str = "1111111111111111111111111111111111111111111111111111111111111111:0";
+
+/// Parse prove arguments after `host prove <OUTPOINT> --dry-run`.
+fn cli(args: &[&str]) -> clap::error::Result<Cli> {
+    let args = ["host", "prove", OUTPOINT, "--dry-run"]
+        .into_iter()
+        .chain(args.iter().copied());
+    Cli::try_parse_from(args)
+}
+
 fn parse(args: &[&str]) -> Result<ContextOptions> {
-    let Command::Context(options) = Cli::try_parse_from(args)?.command else {
-        bail!("expected context command");
+    let Command::Prove(options) = cli(args)?.command else {
+        bail!("expected prove command");
     };
-    Ok(options)
+    Ok(options.context)
 }
 
 #[test]
-fn context_defaults_and_explicit_connections() -> Result<()> {
-    let options = parse(&["host", "context"])?;
+fn prove_context_defaults_and_explicit_connections() -> Result<()> {
+    let options = parse(&[])?;
     assert_eq!(options.last_height, None);
     assert_eq!(options.first_height, None);
     assert_eq!(Network::from(options.network), Network::Bitcoin);
@@ -18,8 +28,6 @@ fn context_defaults_and_explicit_connections() -> Result<()> {
     options.connections.rpc_config()?;
 
     let options = parse(&[
-        "host",
-        "context",
         "200",
         "--first-height",
         "100",
@@ -42,14 +50,7 @@ fn context_defaults_and_explicit_connections() -> Result<()> {
     options.connections.rpc_config()?;
     assert!(!format!("{options:?}").contains("secret-password"));
 
-    let options = parse(&[
-        "host",
-        "context",
-        "--first-height",
-        "100",
-        "--network",
-        "signet",
-    ])?;
+    let options = parse(&["--first-height", "100", "--network", "signet"])?;
     assert_eq!(options.last_height, None);
     assert_eq!(options.first_height, Some(100));
     assert_eq!(Network::from(options.network), Network::Signet);
@@ -64,15 +65,13 @@ fn incomplete_auth_and_invalid_values_fail_during_parsing() -> Result<()> {
         ["--utreexod-rpc-password", "pass"],
     ];
     for included in [1_u8, 2, 4, 3, 5, 6] {
-        let mut args = vec!["host", "context"];
+        let mut args = vec![];
         for (bit, flag) in flags.iter().enumerate() {
             if included & (1 << bit) != 0 {
                 args.extend(flag);
             }
         }
-        let error = Cli::try_parse_from(args)
-            .err()
-            .context("expected missing arguments")?;
+        let error = cli(&args).err().context("expected missing arguments")?;
         assert_eq!(
             error.kind(),
             clap::error::ErrorKind::MissingRequiredArgument
@@ -83,12 +82,10 @@ fn incomplete_auth_and_invalid_values_fail_during_parsing() -> Result<()> {
         ("--network", "testnet4"),
         ("--first-height", "4294967296"),
     ] {
-        assert!(Cli::try_parse_from(["host", "context", flag, value]).is_err());
+        assert!(cli(&[flag, value]).is_err());
     }
     for (user, password) in [("", "pass"), ("user", ""), ("user:name", "pass")] {
-        let error = Cli::try_parse_from([
-            "host",
-            "context",
+        let error = cli(&[
             "--utreexod-rpc",
             "http://localhost/",
             "--utreexod-rpc-user",
@@ -105,9 +102,8 @@ fn incomplete_auth_and_invalid_values_fail_during_parsing() -> Result<()> {
 
 #[test]
 fn prove_minimum_parses_into_the_domain_range() -> Result<()> {
-    let outpoint = format!("{}:0", "11".repeat(32));
     let parse_prove = |extra: &[&str]| -> Result<ProveOptions> {
-        let args = ["host", "prove", outpoint.as_str()]
+        let args = ["host", "prove", OUTPOINT]
             .into_iter()
             .chain(extra.iter().copied());
         let Command::Prove(options) = Cli::try_parse_from(args)?.command else {
@@ -123,7 +119,7 @@ fn prove_minimum_parses_into_the_domain_range() -> Result<()> {
     );
     for value in ["0", "2100000000000001", "-1", "1.5", "one"] {
         let flag = format!("--minimum-sats={value}");
-        let error = Cli::try_parse_from(["host", "prove", &outpoint, "--dry-run", &flag])
+        let error = Cli::try_parse_from(["host", "prove", OUTPOINT, "--dry-run", &flag])
             .err()
             .context("invalid minimum accepted")?;
         assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
@@ -133,9 +129,8 @@ fn prove_minimum_parses_into_the_domain_range() -> Result<()> {
 
 #[test]
 fn prove_needs_exactly_one_of_output_and_dry_run() -> Result<()> {
-    let outpoint = format!("{}:0", "11".repeat(32));
     let parse = |extra: &[&str]| {
-        let args = ["host", "prove", outpoint.as_str()]
+        let args = ["host", "prove", OUTPOINT]
             .into_iter()
             .chain(extra.iter().copied());
         Cli::try_parse_from(args)

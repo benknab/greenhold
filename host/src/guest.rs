@@ -2,7 +2,8 @@ use anyhow::{Context as _, Result, bail};
 use greenhold_core::{claim::Claim, input::ClaimInput};
 use greenhold_guest_builder::{GREENHOLD_GUEST_ELF, GREENHOLD_GUEST_ID};
 use risc0_zkvm::{
-    Executor, ExecutorEnv, ExitCode, LocalProver, Prover, ProverOpts, Receipt, sha::Digest,
+    Executor, ExecutorEnv, ExitCode, InnerReceipt, LocalProver, Prover, ProverOpts, Receipt,
+    sha::Digest,
 };
 
 #[must_use]
@@ -33,12 +34,23 @@ pub fn prove(input: &ClaimInput, expected: &Claim) -> Result<Receipt> {
         .prove_with_opts(env, GREENHOLD_GUEST_ELF, &ProverOpts::succinct())
         .context("guest proving failed")?
         .receipt;
+    if &verify(&receipt)? != expected {
+        bail!("guest claim does not match the host claim");
+    }
+    Ok(receipt)
+}
+
+/// Check a receipt without node access: a succinct proof that this guest halted
+/// normally and committed a well-formed claim. Chain state still needs checking.
+pub fn verify(receipt: &Receipt) -> Result<Claim> {
+    if !matches!(receipt.inner, InnerReceipt::Succinct(_)) {
+        bail!("receipt is not succinct");
+    }
     // Verification requires exit code Halted(0), so a rejected input cannot pass.
     receipt
         .verify(image_id())
         .context("receipt verification failed")?;
-    check_journal(&receipt.journal.bytes, expected)?;
-    Ok(receipt)
+    Claim::try_from(receipt.journal.bytes.as_slice()).context("receipt journal")
 }
 
 fn check_journal(journal: &[u8], expected: &Claim) -> Result<()> {
@@ -48,3 +60,6 @@ fn check_journal(journal: &[u8], expected: &Claim) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests;

@@ -22,9 +22,29 @@ pub struct Cli {
 pub enum Command {
     /// Prove one coin's public claim and write the receipt (node proofs are tip-only).
     Prove(ProveOptions),
-    /// Test tool: fetch headers and historical Utreexo state. Replaced by verify.
-    #[command(hide = true)]
-    Context(ContextOptions),
+    /// Verify a receipt and check its claim against the node's chain state.
+    Verify(VerifyOptions),
+    /// Check a receipt's proof and print its claim, without node access or chain checks.
+    Inspect(InspectOptions),
+}
+
+#[derive(Debug, Args)]
+pub struct VerifyOptions {
+    /// Receipt file to verify.
+    pub receipt: PathBuf,
+
+    /// Bitcoin network the claim must name: bitcoin, signet, or regtest.
+    #[arg(long, default_value = "bitcoin")]
+    pub network: SupportedNetwork,
+
+    #[command(flatten)]
+    pub connections: ConnectionConfig,
+}
+
+#[derive(Debug, Args)]
+pub struct InspectOptions {
+    /// Receipt file to inspect.
+    pub receipt: PathBuf,
 }
 
 #[derive(Debug, Args)]
