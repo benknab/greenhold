@@ -157,7 +157,7 @@ fn transport_rejections_are_specific_and_redact_remote_values() -> Result<()> {
         ),
         (
             "200 OK",
-            json!({"id":1,"error":{"message":"secret"}}).to_string(),
+            json!({"id":1,"error":{"code":-1,"message":"secret"}}).to_string(),
             "node rejected request",
         ),
         (
@@ -179,6 +179,35 @@ fn transport_rejections_are_specific_and_redact_remote_values() -> Result<()> {
             .context("invalid response accepted")?;
         assert_eq!(format!("{error:#}"), expected);
         task.join().map_err(|_| anyhow!("RPC mock panicked"))??;
+    }
+    Ok(())
+}
+
+#[test]
+fn address_search_preserves_options_and_distinguishes_exhaustion_from_failures() -> Result<()> {
+    for (vin_extra, reverse, code) in [
+        (false, false, -5),
+        (true, false, -5),
+        (false, true, -5),
+        (true, true, -5),
+        (false, false, -1),
+        (false, false, -32601),
+    ] {
+        let request = json!({"jsonrpc":"1.0","id":1,"method":"searchrawtransactions",
+            "params":["address",1,100,100,u8::from(vin_extra),reverse]});
+        let body = json!({"id":1,"error":{"code":code,"message":"private address"}});
+        let (config, task) = serve("200 OK", vec![(request, body.to_string())], false)?;
+        let result =
+            Client::new(&config).search_raw_transactions("address", 100, 100, vin_extra, reverse);
+        task.join().map_err(|_| anyhow!("RPC mock panicked"))??;
+        if code == -5 {
+            assert!(result?.is_empty());
+        } else {
+            assert_eq!(
+                result.err().context("RPC failure ignored")?.to_string(),
+                "node rejected request"
+            );
+        }
     }
     Ok(())
 }

@@ -18,6 +18,8 @@ fn distinguishes_null_missing_and_error_results() -> Result<()> {
         br#"{"id":"1","result":7}"#,
         br#"{"result":7}"#,
         br#"{"id":1,"id":1,"result":7}"#,
+        br#"{"id":1,"error":{"message":"missing code"}}"#,
+        br#"{"id":1,"error":{"code":"secret"}}"#,
     ] {
         assert!(Response::parse(bytes).is_err());
     }
@@ -32,6 +34,13 @@ fn distinguishes_null_missing_and_error_results() -> Result<()> {
             .context("expected server error")?;
         assert_eq!(format!("{error:#}"), "node rejected request");
         assert!(error.is::<ServerError>());
+        assert_eq!(
+            error
+                .downcast_ref::<ServerError>()
+                .context("server error")?
+                .code,
+            -1
+        );
     }
     Ok(())
 }

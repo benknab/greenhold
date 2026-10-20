@@ -1,14 +1,13 @@
 use anyhow::{Context, Result, anyhow, bail};
-use serde::{
-    Deserialize, Deserializer, Serialize,
-    de::{DeserializeOwned, IgnoredAny},
-};
+use serde::{Deserialize, Deserializer, Serialize, de::DeserializeOwned};
 use serde_json::value::RawValue;
 use std::{error::Error, fmt};
 
 /// A server rejection, distinct from a malformed response. Remote details are omitted.
-#[derive(Debug)]
-pub(super) struct ServerError;
+#[derive(Debug, Deserialize)]
+pub(super) struct ServerError {
+    pub code: i64,
+}
 
 impl fmt::Display for ServerError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -33,7 +32,7 @@ pub(super) struct Response {
     // Preserve explicit null results while rejecting a missing result on success.
     #[serde(default, deserialize_with = "present")]
     result: Option<Box<RawValue>>,
-    error: Option<IgnoredAny>,
+    error: Option<ServerError>,
 }
 
 fn present<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
@@ -56,8 +55,8 @@ impl Response {
     }
 
     pub fn into_result<T: DeserializeOwned>(self) -> Result<T> {
-        if self.error.is_some() {
-            return Err(ServerError.into());
+        if let Some(error) = self.error {
+            return Err(error.into());
         }
         let result = self.result.context("missing JSON-RPC result")?;
         serde_json::from_str(result.get()).map_err(|_| anyhow!("invalid JSON-RPC result"))

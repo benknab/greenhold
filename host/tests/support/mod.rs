@@ -17,6 +17,8 @@ use testcontainers::{
 };
 use wait_timeout::ChildExt;
 
+pub mod transactions;
+
 pub const MINING_ADDRESS: &str = "bcrt1qusgerygumpd0ztn735s5pypq6wsv2zzhuc4yak";
 
 pub fn image() -> Result<GenericImage> {

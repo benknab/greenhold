@@ -2,6 +2,7 @@ mod cli;
 mod coin;
 mod connection;
 mod context;
+mod discover;
 mod guest;
 mod receipt;
 mod verify;
@@ -27,6 +28,17 @@ fn main() -> ExitCode {
 
 fn run(cli: cli::Cli) -> Result<()> {
     match cli.command {
+        cli::Command::Discover(options) => {
+            let network = options.network.into();
+            let address = options
+                .address
+                .require_network(network)
+                .context("address does not match the requested network")?;
+            let rpc = options.connections.rpc_config()?;
+            for outpoint in discover::outpoints(&address, network, &rpc)? {
+                println!("{outpoint}");
+            }
+        }
         cli::Command::Prove(options) => {
             let input = context::Input::new(
                 options.context.network.into(),

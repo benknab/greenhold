@@ -5,7 +5,7 @@ use url::Url;
 mod client;
 mod responses;
 pub use client::Client;
-pub use responses::{BlockLocation, ChainTipProof, Roots, TxOutResponse};
+pub use responses::{AddressTransaction, BlockLocation, ChainTipProof, Roots, TxOutResponse};
 
 pub struct Config {
     url: Url,

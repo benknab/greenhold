@@ -1,5 +1,5 @@
 use anyhow::Result;
-use bitcoin::{Amount, BlockHash, ScriptBuf, hashes::sha256d, hex::FromHex};
+use bitcoin::{Amount, BlockHash, OutPoint, ScriptBuf, Txid, hashes::sha256d, hex::FromHex};
 use serde::{Deserialize, Deserializer};
 
 #[derive(Debug, Deserialize)]
@@ -17,6 +17,47 @@ pub struct TxOutResponse {
 #[derive(Debug, Deserialize)]
 pub struct ScriptPubKey {
     pub hex: ScriptBuf,
+}
+
+/// Only the fields needed to discover candidate outpoints from address history.
+#[derive(Debug, Deserialize)]
+pub struct AddressTransaction {
+    pub txid: Txid,
+    // Utreexod omits this field for mempool transactions.
+    #[serde(default)]
+    pub confirmations: u64,
+    #[serde(deserialize_with = "deserialize_inputs")]
+    pub vin: Vec<OutPoint>,
+    pub vout: Vec<AddressOutput>,
+}
+
+/// Coinbase inputs carry script bytes rather than an outpoint.
+fn deserialize_inputs<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<OutPoint>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Input {
+        Spend { txid: Txid, vout: u32 },
+        Coinbase { coinbase: String },
+    }
+    let mut outpoints = Vec::new();
+    for input in Vec::<Input>::deserialize(deserializer)? {
+        match input {
+            Input::Spend { txid, vout } => outpoints.push(OutPoint::new(txid, vout)),
+            Input::Coinbase { coinbase } => {
+                Vec::<u8>::from_hex(&coinbase).map_err(serde::de::Error::custom)?;
+            }
+        }
+    }
+    Ok(outpoints)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AddressOutput {
+    pub n: u32,
+    #[serde(rename = "scriptPubKey")]
+    pub script_pub_key: ScriptPubKey,
 }
 
 #[derive(Debug, Deserialize)]

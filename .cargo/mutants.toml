@@ -1,5 +1,5 @@
 # Native trust boundaries. Guest execution and real-node checks run separately.
-examine_globs = ["core/src/context.rs", "core/src/network.rs", "core/src/coin.rs", "core/src/eligibility.rs", "core/src/claim.rs", "core/src/input.rs", "host/src/coin.rs", "host/src/receipt.rs", "host/src/connection/utreexod_rpc/mod.rs", "host/src/connection/utreexod_rpc/client.rs", "host/src/connection/utreexod_rpc/responses.rs", "host/src/context.rs", "host/src/connection/peer/mod.rs"]
+examine_globs = ["core/src/context.rs", "core/src/network.rs", "core/src/coin.rs", "core/src/eligibility.rs", "core/src/claim.rs", "core/src/input.rs", "host/src/coin.rs", "host/src/receipt.rs", "host/src/discover.rs", "host/src/connection/json_rpc.rs", "host/src/connection/utreexod_rpc/mod.rs", "host/src/connection/utreexod_rpc/client.rs", "host/src/connection/utreexod_rpc/responses.rs", "host/src/context.rs", "host/src/connection/peer/mod.rs"]
 exclude_globs = ["**/tests/**", "**/tests.rs"]
 # Equivalent mutant: the shifted height's low bit is zero, so `|` and `^` agree.
 exclude_re = ['replace \| with \^ in Coin::leaf_hash']

@@ -1,8 +1,11 @@
-use super::{BlockHeaderResponse, BlockLocation, ChainTipProof, Config, Roots, TxOutResponse};
+use super::{
+    AddressTransaction, BlockHeaderResponse, BlockLocation, ChainTipProof, Config, Roots,
+    TxOutResponse,
+};
 use crate::connection::{
     MAX_MESSAGE, TIMEOUT,
     header::HeaderResponse,
-    json_rpc::{Request, Response},
+    json_rpc::{Request, Response, ServerError},
 };
 use anyhow::{Result, anyhow, bail};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
@@ -10,6 +13,9 @@ use bitcoin::{BlockHash, Txid};
 use serde::{Serialize, de::DeserializeOwned};
 use std::io::Read;
 use ureq::{Agent, http::HeaderValue};
+
+// Transaction pages are much larger than header, coin, and proof responses.
+const MAX_HISTORY_PAGE: u64 = 16 * 1024 * 1024;
 
 /// HTTP JSON-RPC client with one method per supported Utreexod endpoint.
 pub struct Client<'a> {
@@ -67,6 +73,32 @@ impl<'a> Client<'a> {
         self.call("gettxout", (txid, vout, include_mempool))
     }
 
+    /// Decoded address history with caller-selected input details and ordering.
+    pub fn search_raw_transactions(
+        &mut self,
+        address: &str,
+        skip: u32,
+        count: u32,
+        vin_extra: bool,
+        reverse: bool,
+    ) -> Result<Vec<AddressTransaction>> {
+        match self.call_limited(
+            "searchrawtransactions",
+            (address, 1, skip, count, u8::from(vin_extra), reverse),
+            MAX_HISTORY_PAGE,
+        ) {
+            // Utreexod uses ErrRPCNoTxInfo for unused addresses and exhausted pages.
+            Err(error)
+                if error
+                    .downcast_ref::<ServerError>()
+                    .is_some_and(|e| e.code == -5) =>
+            {
+                Ok(Vec::new())
+            }
+            result => result,
+        }
+    }
+
     /// Supports the structured proof response (RPC verbosity 1).
     pub fn prove_utxo_chain_tip_inclusion(
         &mut self,
@@ -77,6 +109,15 @@ impl<'a> Client<'a> {
     }
 
     fn call<T: DeserializeOwned>(&mut self, method: &str, params: impl Serialize) -> Result<T> {
+        self.call_limited(method, params, MAX_MESSAGE)
+    }
+
+    fn call_limited<T: DeserializeOwned>(
+        &mut self,
+        method: &str,
+        params: impl Serialize,
+        limit: u64,
+    ) -> Result<T> {
         self.id += 1;
         let body = serde_json::to_vec(&Request {
             jsonrpc: Some("1.0"),
@@ -108,10 +149,10 @@ impl<'a> Client<'a> {
         response
             .body_mut()
             .as_reader()
-            .take(MAX_MESSAGE + 1)
+            .take(limit + 1)
             .read_to_end(&mut bytes)
             .map_err(|_| anyhow!("RPC response read failed"))?;
-        if bytes.len() as u64 > MAX_MESSAGE {
+        if bytes.len() as u64 > limit {
             bail!("RPC response exceeds size limit");
         }
         // Remote bodies and transport errors may contain secrets. Do not print them.

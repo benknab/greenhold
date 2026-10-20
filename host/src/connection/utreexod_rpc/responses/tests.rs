@@ -4,6 +4,47 @@ use bitcoin::hashes::Hash;
 use serde_json::json;
 
 #[test]
+fn address_history_parses_spends_coinbases_and_confirmation_state() -> Result<()> {
+    let txid = Txid::all_zeros();
+    let valid = json!({"txid":txid,"confirmations":2,
+        "vin":[{"txid":txid,"vout":3,"extra":true}],
+        "vout":[{"n":0,"scriptPubKey":{"hex":"51"}}]});
+    let parsed: AddressTransaction = serde_json::from_value(valid.clone())?;
+    assert_eq!(parsed.vin, [OutPoint::new(txid, 3)]);
+    assert_eq!(parsed.confirmations, 2);
+    let mut coinbase = valid.clone();
+    coinbase["vin"] = json!([{"coinbase":"0102"}]);
+    assert!(
+        serde_json::from_value::<AddressTransaction>(coinbase)?
+            .vin
+            .is_empty()
+    );
+    let mut mempool = valid.clone();
+    mempool
+        .as_object_mut()
+        .context("transaction object")?
+        .remove("confirmations");
+    assert_eq!(
+        serde_json::from_value::<AddressTransaction>(mempool)?.confirmations,
+        0
+    );
+    for (field, value) in [
+        ("confirmations", json!(-1)),
+        ("confirmations", json!(null)),
+        ("vin", json!([{"txid":txid}])),
+        ("vin", json!([{"vout":0}])),
+        ("vin", json!([{"txid":"bad","vout":0}])),
+        ("vin", json!([{"txid":txid,"vout":-1}])),
+        ("vin", json!([{"coinbase":"zz"}])),
+    ] {
+        let mut value_to_parse = valid.clone();
+        value_to_parse[field] = value;
+        assert!(serde_json::from_value::<AddressTransaction>(value_to_parse).is_err());
+    }
+    Ok(())
+}
+
+#[test]
 fn amounts_preserve_satoshis_in_decimal_and_scientific_notation() -> Result<()> {
     let response = |text: &str| {
         serde_json::from_str::<TxOutResponse>(&format!(

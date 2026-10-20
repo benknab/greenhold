@@ -20,12 +20,27 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// List confirmed unspent outpoints for an address, one per line.
+    Discover(DiscoverOptions),
     /// Prove one coin's public claim and write the receipt (node proofs are tip-only).
     Prove(ProveOptions),
     /// Verify a receipt and check its claim against the node's chain state.
     Verify(VerifyOptions),
     /// Check a receipt's proof and print its claim, without node access or chain checks.
     Inspect(InspectOptions),
+}
+
+#[derive(Debug, Args)]
+pub struct DiscoverOptions {
+    /// Address whose current coins should be listed.
+    pub address: bitcoin::Address<bitcoin::address::NetworkUnchecked>,
+
+    /// Bitcoin network: bitcoin, signet, or regtest.
+    #[arg(long, default_value = "bitcoin")]
+    pub network: SupportedNetwork,
+
+    #[command(flatten)]
+    pub connections: ConnectionConfig,
 }
 
 #[derive(Debug, Args)]
