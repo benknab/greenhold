@@ -167,3 +167,70 @@ fn rpc_url_excludes_embedded_secrets_and_non_http_transports() {
         assert!(rpc_url(text).is_err(), "{text}");
     }
 }
+
+#[test]
+fn discover_selects_one_backend_and_validates_electrum_urls() -> Result<()> {
+    let parse = |extra: &[&str]| {
+        Cli::try_parse_from(
+            ["host", "discover", "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"]
+                .into_iter()
+                .chain(extra.iter().copied()),
+        )
+    };
+    for (args, expected) in [
+        (vec![], None),
+        (vec!["--electrum"], Some(DEFAULT_ELECTRUM)),
+        (
+            vec!["--electrum", "--network", "bitcoin"],
+            Some(DEFAULT_ELECTRUM),
+        ),
+        (
+            vec!["--electrum", "tcp://localhost:50001"],
+            Some("tcp://localhost:50001"),
+        ),
+        (
+            vec!["--electrum=ssl://localhost:50002"],
+            Some("ssl://localhost:50002"),
+        ),
+    ] {
+        let Command::Discover(options) = parse(&args)?.command else {
+            bail!("expected discover command");
+        };
+        assert_eq!(
+            options
+                .electrum
+                .as_ref()
+                .map(|endpoint| endpoint.socket_url().url().as_str()),
+            expected
+        );
+        if expected.is_none() {
+            options.connections.rpc_config()?;
+        }
+    }
+    for url in [
+        "https://host:50002",
+        "tls://host",
+        "tcp://user:pass@host:50001",
+    ] {
+        let error = parse(&["--electrum", url])
+            .err()
+            .context("invalid URL accepted")?;
+        assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
+    }
+    for flag in [
+        "--utreexod-rpc",
+        "--utreexod-rpc-user",
+        "--utreexod-rpc-password",
+    ] {
+        let value = if flag == "--utreexod-rpc" {
+            "http://localhost/"
+        } else {
+            "test"
+        };
+        let error = parse(&["--electrum", flag, value])
+            .err()
+            .context("mixed backends accepted")?;
+        assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+    Ok(())
+}

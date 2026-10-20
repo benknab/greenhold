@@ -9,6 +9,8 @@ fn discover_checks_address_and_network_before_node_access() -> Result<()> {
     let help = String::from_utf8(help.stdout)?;
     assert!(help.contains("<ADDRESS>"));
     assert!(help.contains("one per line"));
+    assert!(help.contains("--electrum [<URL>]"));
+    assert!(help.contains("tls://electrum.hospitablealpaca.com:50002"));
     for (address, code, message) in [
         ("not-an-address", 2, "invalid value"),
         (
@@ -17,22 +19,27 @@ fn discover_checks_address_and_network_before_node_access() -> Result<()> {
             "address does not match the requested network",
         ),
     ] {
-        let output = Command::new(binary)
-            .args([
-                "discover",
-                address,
+        for connection in [
+            vec!["--electrum"],
+            vec!["--electrum", "tcp://127.0.0.1:9"],
+            vec![
                 "--utreexod-rpc",
                 "http://127.0.0.1:9/",
                 "--utreexod-rpc-user",
                 "user",
                 "--utreexod-rpc-password",
                 "pass",
-            ])
-            .output()?;
-        assert_eq!(output.status.code(), Some(code));
-        assert!(output.stdout.is_empty());
-        let stderr = String::from_utf8(output.stderr)?;
-        assert!(stderr.contains(message), "{stderr}");
+            ],
+        ] {
+            let output = Command::new(binary)
+                .args(["discover", address])
+                .args(connection)
+                .output()?;
+            assert_eq!(output.status.code(), Some(code));
+            assert!(output.stdout.is_empty());
+            let stderr = String::from_utf8(output.stderr)?;
+            assert!(stderr.contains(message), "{stderr}");
+        }
     }
     Ok(())
 }

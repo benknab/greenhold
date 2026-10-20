@@ -1,6 +1,6 @@
 #[expect(
     dead_code,
-    reason = "Electrum connection code is retained for future operations"
+    reason = "Electrum version details and header queries are retained for future operations"
 )]
 pub mod electrum;
 mod header;

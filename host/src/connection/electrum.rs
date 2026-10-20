@@ -5,7 +5,12 @@ use super::{
     socket::{SocketUrl, connect_tcp},
 };
 use anyhow::{Context, Result, bail};
-use bitcoin::{BlockHash, block::Header};
+use bitcoin::{
+    BlockHash, Script, Txid,
+    block::Header,
+    hashes::{Hash, sha256},
+    hex::DisplayHex,
+};
 use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned, pki_types::ServerName};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::{
@@ -21,6 +26,14 @@ const PROTOCOL_VERSION: &str = "1.4";
 #[derive(Deserialize)]
 struct Features {
     genesis_hash: BlockHash,
+}
+
+/// Candidate coin data reported by the server, without a membership proof.
+#[derive(Debug, Deserialize)]
+pub struct Unspent {
+    pub tx_hash: Txid,
+    pub tx_pos: u32,
+    pub height: i32,
 }
 
 /// Server identity and the negotiated protocol version.
@@ -194,6 +207,16 @@ impl Client {
     pub fn block_header(&mut self, height: u32) -> Result<Header> {
         let HeaderResponse(header) = self.call("blockchain.block.header", [height])?;
         Ok(header)
+    }
+
+    pub fn list_unspent(&mut self, script: &Script) -> Result<Vec<Unspent>> {
+        // Electrum encodes script hashes in reverse byte order.
+        let mut hash = sha256::Hash::hash(script.as_bytes()).to_byte_array();
+        hash.reverse();
+        self.call(
+            "blockchain.scripthash.listunspent",
+            [hash.as_hex().to_string()],
+        )
     }
 
     /// Send a request/response method and positional parameters. Subscriptions are unsupported.

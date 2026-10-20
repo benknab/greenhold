@@ -1,10 +1,32 @@
-use crate::connection::utreexod_rpc;
+use crate::connection::{electrum, utreexod_rpc};
 use anyhow::{Context as _, Result, bail};
 use bitcoin::{Address, Network, OutPoint, blockdata::constants::genesis_block};
 use std::collections::BTreeSet;
 
 const PAGE_SIZE: u32 = 1_000;
 const COIN_BATCH_SIZE: usize = 100;
+
+/// Electrum reports candidates only. Proving must fetch and verify each coin independently.
+/// Its unspent list excludes pending spends, even when the coin itself is confirmed.
+pub fn electrum_outpoints(
+    address: &Address,
+    network: Network,
+    endpoint: &electrum::Endpoint,
+) -> Result<Vec<OutPoint>> {
+    let mut client = electrum::Client::connect(endpoint)?;
+    client.server_version()?;
+    if client.genesis_hash()? != genesis_block(network).block_hash() {
+        bail!("Electrum server is not on the requested network ({network})");
+    }
+    let candidates = client.list_unspent(&address.script_pubkey())?;
+    Ok(candidates
+        .into_iter()
+        .filter(|coin| coin.height > 0)
+        .map(|coin| OutPoint::new(coin.tx_hash, coin.tx_pos))
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect())
+}
 
 /// Discover candidates from this node's address index, without proving membership.
 /// Use confirmed chain state only. A changed tip requires a new discovery run.

@@ -34,8 +34,13 @@ fn run(cli: cli::Cli) -> Result<()> {
                 .address
                 .require_network(network)
                 .context("address does not match the requested network")?;
-            let rpc = options.connections.rpc_config()?;
-            for outpoint in discover::outpoints(&address, network, &rpc)? {
+            let outpoints = if let Some(endpoint) = options.electrum {
+                discover::electrum_outpoints(&address, network, &endpoint)?
+            } else {
+                let rpc = options.connections.rpc_config()?;
+                discover::outpoints(&address, network, &rpc)?
+            };
+            for outpoint in outpoints {
                 println!("{outpoint}");
             }
         }

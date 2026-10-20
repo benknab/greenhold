@@ -1,4 +1,4 @@
-use crate::connection::utreexod_rpc;
+use crate::connection::{electrum, utreexod_rpc};
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand};
 use greenhold_core::{eligibility::MinimumAmount, network::SupportedNetwork};
@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use url::Url;
 
 pub const DEFAULT_RPC: &str = "https://utreexo.hospitablealpaca.com/";
+pub const DEFAULT_ELECTRUM: &str = "tls://electrum.hospitablealpaca.com:50002";
 
 #[derive(Debug, Parser)]
 #[command(
@@ -38,6 +39,13 @@ pub struct DiscoverOptions {
     /// Bitcoin network: bitcoin, signet, or regtest.
     #[arg(long, default_value = "bitcoin")]
     pub network: SupportedNetwork,
+
+    /// Discover through Electrum instead of Utreexod.
+    /// Without URL, use <tls://electrum.hospitablealpaca.com:50002>.
+    /// Electrum excludes unconfirmed outputs and coins spent by pending transactions.
+    #[arg(long, value_name = "URL", num_args = 0..=1, default_missing_value = DEFAULT_ELECTRUM,
+        conflicts_with_all = ["utreexod_rpc", "utreexod_rpc_user", "utreexod_rpc_password"])]
+    pub electrum: Option<electrum::Endpoint>,
 
     #[command(flatten)]
     pub connections: ConnectionConfig,
