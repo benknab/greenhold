@@ -24,9 +24,11 @@ pub struct Cli {
 pub enum Command {
     /// List confirmed unspent outpoints for an address, one per line.
     Discover(DiscoverOptions),
-    /// Prove one coin's public claim and write the receipt (node proofs are tip-only).
+    /// Prepare a claim and private coin witness to sign (node proofs are tip-only).
+    Claim(ClaimOptions),
+    /// Prove a prepared claim using its saved witness and signature.
     Prove(ProveOptions),
-    /// Verify a receipt against the expected message and the node's chain state.
+    /// Verify a receipt against the expected claim and the node's chain state.
     Verify(VerifyOptions),
     /// Check a receipt's proof and print its claim, without node access or chain checks.
     Inspect(InspectOptions),
@@ -50,9 +52,9 @@ pub struct VerifyOptions {
     /// Receipt file to verify.
     pub receipt: PathBuf,
 
-    /// Exact message whose signature the receipt must prove.
-    #[arg(long, value_name = "TEXT")]
-    pub message: String,
+    /// Independently approved canonical claim file.
+    #[arg(long, value_name = "FILE")]
+    pub claim: PathBuf,
 
     /// Bitcoin network the claim must name: bitcoin, signet, or regtest.
     #[arg(long, default_value = "bitcoin")]
@@ -70,25 +72,16 @@ pub struct InspectOptions {
 
 #[derive(Debug, Args)]
 pub struct ProveOptions {
-    /// Candidate output as TXID:VOUT (zero-based output index).
-    pub outpoint: bitcoin::OutPoint,
+    /// Canonical claim file produced by claim.
+    pub claim: PathBuf,
 
-    /// Address that signed --message. Its script must lock the coin.
-    #[arg(long)]
-    pub address: bitcoin::Address<bitcoin::address::NetworkUnchecked>,
+    /// Private coin witness captured with the claim.
+    #[arg(long, value_name = "FILE")]
+    pub witness: PathBuf,
 
-    /// Message that --signature signs.
-    #[arg(long, value_name = "TEXT")]
-    pub message: String,
-
-    /// BIP-322 signature: simple (smp) for P2WPKH or P2TR, full (ful) for P2PKH,
-    /// P2SH-P2WPKH, P2WPKH, or P2TR, or legacy for P2PKH.
+    /// BIP-322 signature over the claim's exact signing message.
     #[arg(long)]
     pub signature: Signature,
-
-    /// Minimum coin value M in satoshis, up to 2100000000000000.
-    #[arg(long, value_name = "SATS", default_value = "1")]
-    pub minimum_sats: MinimumAmount,
 
     /// Receipt file to write. Replaces an existing file.
     #[arg(long, value_name = "FILE", required_unless_present = "dry_run")]
@@ -97,6 +90,31 @@ pub struct ProveOptions {
     /// Run the guest without proving, and write no receipt.
     #[arg(long, conflicts_with = "output")]
     pub dry_run: bool,
+
+    /// Bitcoin network the claim must name: bitcoin, signet, or regtest.
+    #[arg(long, default_value = "bitcoin")]
+    pub network: SupportedNetwork,
+
+    #[command(flatten)]
+    pub connections: ConnectionConfig,
+}
+
+#[derive(Debug, Args)]
+pub struct ClaimOptions {
+    /// Candidate output as TXID:VOUT (zero-based output index).
+    pub outpoint: bitcoin::OutPoint,
+
+    /// Minimum coin value M in satoshis, up to 2100000000000000.
+    #[arg(long, value_name = "SATS", default_value = "1")]
+    pub minimum_sats: MinimumAmount,
+
+    /// Canonical binary claim file to write. Replaces an existing file.
+    #[arg(long, value_name = "FILE")]
+    pub output: PathBuf,
+
+    /// Private coin witness file to write. Replaces an existing file.
+    #[arg(long, value_name = "FILE")]
+    pub witness: PathBuf,
 
     #[command(flatten)]
     pub context: ContextOptions,
@@ -108,7 +126,7 @@ pub struct ContextOptions {
     #[arg(long, default_value = "bitcoin")]
     pub network: SupportedNetwork,
 
-    /// Last block height T. Defaults to the RPC tip (the proof's block for prove).
+    /// Last block height T. Defaults to the tip proof's block.
     pub last_height: Option<u32>,
 
     /// First block height X. Defaults to T for a single-block context.

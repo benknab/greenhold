@@ -1,11 +1,15 @@
 use super::*;
 use crate::{
     coin::Coin,
-    test_support::{VALUE, proved, signatures::*},
+    test_support::{VALUE, proved},
 };
-use bitcoin::{Address, Amount, BlockHash, OutPoint, TxOut, Txid, hashes::Hash};
+use bitcoin::{
+    Amount, BlockHash, Network, OutPoint, TxOut, Txid, hashes::Hash, secp256k1::SecretKey,
+};
+use greenhold_signer::{Format, ScriptType, address, sign};
 
-fn input(address: &str, message: &str, signature: &str) -> Result<ClaimInput> {
+fn input(script: ScriptType, format: Format) -> Result<ClaimInput> {
+    let key = SecretKey::from_slice(&[1; 32])?;
     let coin = Coin::new(
         OutPoint::new(Txid::from_byte_array([1; 32]), 2),
         BlockHash::from_byte_array([2; 32]),
@@ -13,61 +17,55 @@ fn input(address: &str, message: &str, signature: &str) -> Result<ClaimInput> {
         false,
         TxOut {
             value: Amount::from_sat(VALUE),
-            script_pubkey: address
-                .parse::<Address<_>>()?
-                .assume_checked()
-                .script_pubkey(),
+            script_pubkey: address(script, &key, Network::Regtest).script_pubkey(),
         },
     )?;
     let (witness, context) = proved(coin, 10, 20)?;
-    Ok(ClaimInput::new(
-        context,
-        witness,
-        MinimumAmount::try_from(VALUE)?,
-        message.into(),
-        signature.parse()?,
-    ))
+    let minimum = MinimumAmount::try_from(VALUE)?;
+    let message = Claim::new(&context, minimum).signing_message();
+    let signature = sign(script, format, &key, Network::Regtest, &message)?
+        .signature
+        .parse()?;
+    Ok(ClaimInput::new(context, witness, minimum, signature))
 }
 
 #[test]
-fn input_yields_the_claim_only_for_an_eligible_coin() -> Result<()> {
-    let mut input = input(P2WPKH, MESSAGE, P2WPKH_SIMPLE)?;
+fn input_requires_eligibility_and_a_signature_over_the_exact_claim() -> Result<()> {
+    let original = input(ScriptType::P2wpkh, Format::Simple)?;
     assert_eq!(
-        input.clone().check()?,
-        Claim::new(&input.context, input.minimum, MESSAGE)
+        original.clone().check()?,
+        Claim::new(&original.context, original.minimum)
     );
-    input.minimum = MinimumAmount::try_from(VALUE + 1)?;
-    let error = input
-        .check()
-        .err()
-        .ok_or_else(|| anyhow::anyhow!("ineligible coin produced a claim"))?;
-    assert!(error.to_string().contains("below the minimum"), "{error:#}");
+    for minimum in [VALUE - 1, VALUE + 1] {
+        let mut changed = original.clone();
+        changed.minimum = MinimumAmount::try_from(minimum)?;
+        assert!(changed.check().is_err());
+    }
     Ok(())
 }
 
 #[test]
 fn private_inputs_verify_every_format_after_serialization() -> Result<()> {
-    for (address, signature) in CASES {
-        let input = input(address, MESSAGE, signature)?;
-        let encoded = serde_json::to_value(&input)?;
-        let decoded: ClaimInput = serde_json::from_value(encoded.clone())?;
-        assert_eq!(
-            decoded.check()?,
-            Claim::new(&input.context, input.minimum, MESSAGE)
-        );
-        for replacement in ["", "not base64", "pofAAAA"] {
-            let mut invalid = encoded.clone();
-            invalid["signature"] = replacement.into();
-            assert!(serde_json::from_value::<ClaimInput>(invalid).is_err());
+    for script in [
+        ScriptType::P2pkh,
+        ScriptType::P2shP2wpkh,
+        ScriptType::P2wpkh,
+        ScriptType::P2tr,
+    ] {
+        for &format in script.formats() {
+            let input = input(script, format)?;
+            let encoded = serde_json::to_value(&input)?;
+            let decoded: ClaimInput = serde_json::from_value(encoded.clone())?;
+            assert_eq!(decoded.check()?, Claim::new(&input.context, input.minimum));
+            for replacement in ["", "not base64", "pofAAAA"] {
+                let mut invalid = encoded.clone();
+                invalid["signature"] = replacement.into();
+                assert!(serde_json::from_value::<ClaimInput>(invalid).is_err());
+            }
+            let mut invalid = input;
+            invalid.signature = "smpAA==".parse()?;
+            assert!(invalid.check().is_err());
         }
-        assert!(
-            self::input(address, "different message", signature)?
-                .check()
-                .is_err()
-        );
-        let other = if address == P2TR { P2WPKH } else { P2TR };
-        assert!(self::input(other, MESSAGE, signature)?.check().is_err());
-        assert!(self::input(address, MESSAGE, "smpAA==")?.check().is_err());
     }
     Ok(())
 }

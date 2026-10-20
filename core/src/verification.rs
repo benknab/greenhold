@@ -90,15 +90,9 @@ pub fn verify_signature(
     message: &str,
     signature: &Signature,
 ) -> Result<()> {
-    if !(script_pubkey.is_p2pkh()
-        || script_pubkey.is_p2sh()
-        || script_pubkey.is_p2wpkh()
-        || script_pubkey.is_p2tr())
-    {
-        bail!("unsupported script; expected P2PKH, P2SH-P2WPKH, P2WPKH, or P2TR");
-    }
+    check_script(script_pubkey)?;
     // The library takes an address. Its network only selects the address encoding;
-    // BIP-322 signs the script, and the host checks the supplied address's network.
+    // BIP-322 signs the script, and the claim binds the network.
     let address = Address::from_script(script_pubkey, Network::Bitcoin)?;
     let result = match &signature.0 {
         Encoding::Legacy(signature) => {
@@ -132,6 +126,18 @@ pub fn verify_signature(
         Verification::Valid { .. } => bail!("time-locked BIP-322 signatures are not supported"),
         Verification::Inconclusive => bail!("BIP-322 verification is inconclusive"),
     }
+}
+
+/// Check a candidate locking-script template before asking for a signature.
+/// For P2SH, signature verification must additionally establish a P2WPKH redeem script.
+///
+/// # Errors
+/// Rejects templates outside P2PKH, P2SH, P2WPKH, and P2TR.
+pub fn check_script(script: &Script) -> Result<()> {
+    if !(script.is_p2pkh() || script.is_p2sh() || script.is_p2wpkh() || script.is_p2tr()) {
+        bail!("unsupported script; expected P2PKH, P2SH-P2WPKH, P2WPKH, or P2TR");
+    }
+    Ok(())
 }
 
 /// Restrict the library's broader script support to our single-key policy.

@@ -4,38 +4,48 @@ use bitcoin::Network;
 const OUTPOINT: &str = "1111111111111111111111111111111111111111111111111111111111111111:0";
 
 /// Parsing checks only the signature encoding, not the signature.
-const SIGNED: [&str; 6] = [
-    "--address",
-    "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu",
-    "--message",
-    "message",
+const SIGNED: [&str; 4] = [
+    "--witness",
+    "coin.witness",
     "--signature",
     "smpAkgwRQIhAKhSHOe4EaSt0a4mn+BQdQGuirn2vIn/a2Z4R6YplK0AAiBG+iFd4tbWCVyT0q8daaBXVfss7lHhpOVsr+KWLgF1CgEhAzDVT9DdQgpuX402JPXzSCyuNQ951fB1O/W+75wtka88",
 ];
 
-/// Parse prove arguments after `host prove <OUTPOINT>` and the signature flags.
+/// Parse prove arguments after its claim and witness/signature flags.
 fn prove(args: &[&str]) -> clap::error::Result<Cli> {
-    let args = ["host", "prove", OUTPOINT]
+    let args = ["host", "prove", "claim.bin"]
         .into_iter()
         .chain(SIGNED)
         .chain(args.iter().copied());
     Cli::try_parse_from(args)
 }
 
-/// Parse prove arguments after `host prove <OUTPOINT> --dry-run` and the signature flags.
+/// Parse claim arguments after its required artifact paths.
 fn cli(args: &[&str]) -> clap::error::Result<Cli> {
-    prove(&[&["--dry-run"], args].concat())
+    Cli::try_parse_from(
+        [
+            "host",
+            "claim",
+            OUTPOINT,
+            "--output",
+            "claim.bin",
+            "--witness",
+            "coin.witness",
+        ]
+        .into_iter()
+        .chain(args.iter().copied()),
+    )
 }
 
 fn parse(args: &[&str]) -> Result<ContextOptions> {
-    let Command::Prove(options) = cli(args)?.command else {
-        bail!("expected prove command");
+    let Command::Claim(options) = cli(args)?.command else {
+        bail!("expected claim command");
     };
     Ok(options.context)
 }
 
 #[test]
-fn prove_context_defaults_and_explicit_connections() -> Result<()> {
+fn claim_context_defaults_and_explicit_connections() -> Result<()> {
     let options = parse(&[])?;
     assert_eq!(options.last_height, None);
     assert_eq!(options.first_height, None);
@@ -117,17 +127,17 @@ fn incomplete_auth_and_invalid_values_fail_during_parsing() -> Result<()> {
 }
 
 #[test]
-fn prove_minimum_parses_into_the_domain_range() -> Result<()> {
-    let parse_prove = |extra: &[&str]| -> Result<ProveOptions> {
-        let Command::Prove(options) = prove(extra)?.command else {
-            bail!("expected prove command");
+fn claim_minimum_parses_into_the_domain_range() -> Result<()> {
+    let parse_claim = |extra: &[&str]| -> Result<ClaimOptions> {
+        let Command::Claim(options) = cli(extra)?.command else {
+            bail!("expected claim command");
         };
         Ok(options)
     };
-    assert_eq!(u64::from(parse_prove(&["--dry-run"])?.minimum_sats), 1);
+    assert_eq!(u64::from(parse_claim(&[])?.minimum_sats), 1);
     let max = "2100000000000000";
     assert_eq!(
-        u64::from(parse_prove(&["--dry-run", "--minimum-sats", max])?.minimum_sats),
+        u64::from(parse_claim(&["--minimum-sats", max])?.minimum_sats),
         2_100_000_000_000_000
     );
     for value in ["0", "2100000000000001", "-1", "1.5", "one"] {
@@ -162,10 +172,10 @@ fn prove_needs_exactly_one_of_output_and_dry_run() -> Result<()> {
 }
 
 #[test]
-fn prove_needs_an_address_message_and_well_formed_signature() -> Result<()> {
+fn prove_needs_a_witness_and_well_formed_signature() -> Result<()> {
     // Replace or drop one flag of SIGNED, then parse a dry run.
     let parse = |flag: &str, value: Option<&str>| -> Result<clap::error::ErrorKind> {
-        let mut args = vec!["host", "prove", OUTPOINT, "--dry-run"];
+        let mut args = vec!["host", "prove", "claim.bin", "--dry-run"];
         for pair in SIGNED.chunks(2) {
             match (pair, value) {
                 ([name, _], Some(value)) if *name == flag => args.extend([flag, value]),
@@ -176,17 +186,13 @@ fn prove_needs_an_address_message_and_well_formed_signature() -> Result<()> {
         let error = Cli::try_parse_from(args).err().context("flags accepted")?;
         Ok(error.kind())
     };
-    for flag in ["--address", "--message", "--signature"] {
+    for flag in ["--witness", "--signature"] {
         assert_eq!(
             parse(flag, None)?,
             clap::error::ErrorKind::MissingRequiredArgument
         );
     }
-    for (flag, value) in [
-        ("--signature", "smp!"),
-        ("--signature", "pofAAAA"),
-        ("--address", "not-an-address"),
-    ] {
+    for (flag, value) in [("--signature", "smp!"), ("--signature", "pofAAAA")] {
         assert_eq!(
             parse(flag, Some(value))?,
             clap::error::ErrorKind::ValueValidation
@@ -196,22 +202,21 @@ fn prove_needs_an_address_message_and_well_formed_signature() -> Result<()> {
 }
 
 #[test]
-fn verify_requires_an_explicit_message_including_empty_text() -> Result<()> {
+fn verify_requires_an_explicit_expected_claim() -> Result<()> {
     let error = Cli::try_parse_from(["host", "verify", "claim.receipt"])
         .err()
-        .context("missing message accepted")?;
+        .context("missing claim accepted")?;
     assert_eq!(
         error.kind(),
         clap::error::ErrorKind::MissingRequiredArgument
     );
-    for message in ["", "a message\nwith whitespace", "árvíz 🦀"] {
-        let Command::Verify(options) =
-            Cli::try_parse_from(["host", "verify", "claim.receipt", "--message", message])?.command
-        else {
-            bail!("expected verify command");
-        };
-        assert_eq!(options.message, message);
-    }
+    let Command::Verify(options) =
+        Cli::try_parse_from(["host", "verify", "claim.receipt", "--claim", "expected.bin"])?
+            .command
+    else {
+        bail!("expected verify command");
+    };
+    assert_eq!(options.claim, PathBuf::from("expected.bin"));
     Ok(())
 }
 

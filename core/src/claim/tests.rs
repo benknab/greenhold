@@ -30,7 +30,6 @@ fn claim() -> Result<Claim> {
     Ok(Claim::new(
         &context(10, 20)?,
         MinimumAmount::try_from(12_345)?,
-        "abc",
     ))
 }
 
@@ -48,9 +47,6 @@ fn claim_bytes_and_json_follow_the_documented_layout() -> Result<()> {
     expected.extend(last.to_byte_array());
     expected.extend(12_345u64.to_le_bytes());
     expected.extend(digest.to_byte_array());
-    let message_digest: sha256::Hash =
-        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".parse()?;
-    expected.extend(message_digest.to_byte_array());
     assert_eq!(claim.to_bytes(), expected);
     let parsed = Claim::try_from(expected.as_slice())?;
     assert_eq!(parsed, claim);
@@ -59,7 +55,6 @@ fn claim_bytes_and_json_follow_the_documented_layout() -> Result<()> {
     let rebuilt = Claim::new(
         &context(parsed.first_height(), parsed.last_height())?,
         parsed.minimum_sats(),
-        "abc",
     );
     assert_eq!(rebuilt, parsed);
     assert_eq!(
@@ -70,12 +65,11 @@ fn claim_bytes_and_json_follow_the_documented_layout() -> Result<()> {
             "last": {"height": 20, "hash": last},
             "minimum_sats": 12_345,
             "context_digest": digest,
-            "message_digest": message_digest,
         })
     );
 
     // X = T is one block, named twice.
-    let single = Claim::new(&context(20, 20)?, MinimumAmount::try_from(1)?, "");
+    let single = Claim::new(&context(20, 20)?, MinimumAmount::try_from(1)?);
     assert_eq!(Claim::try_from(single.to_bytes().as_slice())?, single);
     Ok(())
 }
@@ -111,17 +105,43 @@ fn claim_parsing_rejects_malformed_bytes() -> Result<()> {
 }
 
 #[test]
-fn claim_binds_exact_message_bytes() -> Result<()> {
-    let context = context(10, 20)?;
-    let minimum = MinimumAmount::try_from(1)?;
-    for message in ["", "abc", "hello\nworld", "árvíz 🦀", "\0", "é", "e\u{301}"] {
-        let claim = Claim::new(&context, minimum, message);
-        let parsed = Claim::try_from(claim.to_bytes().as_slice())?;
-        assert!(parsed.matches_message(message));
-        let different = format!("{message} ");
-        assert!(!parsed.matches_message(&different));
-        assert_ne!(claim, Claim::new(&context, minimum, &different));
+fn signing_message_matches_independent_vector_and_binds_every_field() -> Result<()> {
+    // Python hashlib and OpenSSL vector: synthetic genesis state, encoding only.
+    let endpoint = BlockEndpoint::new(Network::Bitcoin, 0, header(Network::Bitcoin))?;
+    let context = ChainContext::new(
+        endpoint.clone(),
+        endpoint,
+        AccumulatorState::new(3, vec![[0x11; 32], [0x22; 32]])?,
+    )?;
+    let claim = Claim::new(&context, MinimumAmount::try_from(12_345)?);
+    assert_eq!(claim.to_bytes().len(), 163);
+    assert_eq!(
+        claim.signing_message(),
+        "greenhold/claim:08897142df4b6e679e53cd3b01b0eed9a2f3e01d0fbdf83f353bf52a716d4523"
+    );
+    let original = self::claim()?;
+    let bytes = original.to_bytes();
+    for offset in [
+        NETWORK,
+        FIRST,
+        FIRST + 4,
+        LAST,
+        LAST + 4,
+        MINIMUM,
+        MINIMUM + 8,
+    ] {
+        let mut changed = bytes.clone();
+        if offset == NETWORK {
+            changed[NETWORK..FIRST]
+                .copy_from_slice(genesis_block(Network::Signet).block_hash().as_byte_array());
+        } else {
+            changed[offset] ^= 1;
+        }
+        let changed = Claim::try_from(changed.as_slice())?;
+        assert_ne!(changed.signing_message(), original.signing_message());
     }
-    assert!(!Claim::new(&context, minimum, "é").matches_message("e\u{301}"));
+    let mut old_format = bytes;
+    old_format.extend([0; 32]);
+    assert!(Claim::try_from(old_format.as_slice()).is_err());
     Ok(())
 }

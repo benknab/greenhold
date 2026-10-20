@@ -25,7 +25,7 @@ pub struct BlockRef {
 
 /// Some eligible coin worth at least M, created by X and unspent at T, exists in
 /// the chain state that the context digest names, and its script verifies a signature
-/// over the message named by the message digest. Parsing does not make that true;
+/// over this exact claim's signing message. Parsing does not make that true;
 /// a verifier rebuilds the expected claim from its own nodes and compares.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Claim {
@@ -34,12 +34,11 @@ pub struct Claim {
     last: BlockRef,
     minimum_sats: MinimumAmount,
     context_digest: sha256::Hash,
-    message_digest: sha256::Hash,
 }
 
 impl Claim {
     #[must_use]
-    pub fn new(context: &ChainContext, minimum: MinimumAmount, message: &str) -> Self {
+    pub fn new(context: &ChainContext, minimum: MinimumAmount) -> Self {
         let block = |endpoint: &BlockEndpoint| BlockRef {
             height: endpoint.height(),
             hash: endpoint.hash(),
@@ -50,7 +49,6 @@ impl Claim {
             last: block(context.last()),
             minimum_sats: minimum,
             context_digest: context.digest(),
-            message_digest: sha256::Hash::hash(message.as_bytes()),
         }
     }
 
@@ -76,15 +74,15 @@ impl Claim {
         self.minimum_sats
     }
 
-    /// Match the exact UTF-8 message bytes, without normalization.
+    /// The exact 80-byte ASCII message to sign: a domain prefix and the lowercase
+    /// SHA-256 hex digest of the canonical claim, without a newline or terminator.
     #[must_use]
-    pub fn matches_message(&self, message: &str) -> bool {
-        self.message_digest == sha256::Hash::hash(message.as_bytes())
+    pub fn signing_message(&self) -> String {
+        format!("greenhold/claim:{}", sha256::Hash::hash(&self.to_bytes()))
     }
 
     /// Fixed-length canonical bytes: the tag, the network's genesis hash, then for
-    /// X and T a LE u32 height and 32-byte block hash, LE u64 M, the context digest,
-    /// and SHA-256 of the exact UTF-8 message bytes.
+    /// X and T a LE u32 height and 32-byte block hash, LE u64 M, and the context digest.
     /// Hashes use internal byte order, not reversed display order.
     #[must_use]
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -97,7 +95,6 @@ impl Claim {
         }
         bytes.extend_from_slice(&u64::from(self.minimum_sats).to_le_bytes());
         bytes.extend_from_slice(self.context_digest.as_byte_array());
-        bytes.extend_from_slice(self.message_digest.as_byte_array());
         bytes
     }
 }
@@ -123,7 +120,6 @@ impl TryFrom<&[u8]> for Claim {
         let last = block()?;
         let minimum_sats = MinimumAmount::try_from(u64::from_le_bytes(reader.take()?))?;
         let context_digest = sha256::Hash::from_byte_array(reader.take()?);
-        let message_digest = sha256::Hash::from_byte_array(reader.take()?);
         if !reader.0.is_empty() {
             bail!("claim has trailing bytes");
         }
@@ -134,7 +130,6 @@ impl TryFrom<&[u8]> for Claim {
             last,
             minimum_sats,
             context_digest,
-            message_digest,
         })
     }
 }
