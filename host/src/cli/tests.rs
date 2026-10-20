@@ -3,12 +3,28 @@ use bitcoin::Network;
 
 const OUTPOINT: &str = "1111111111111111111111111111111111111111111111111111111111111111:0";
 
-/// Parse prove arguments after `host prove <OUTPOINT> --dry-run`.
-fn cli(args: &[&str]) -> clap::error::Result<Cli> {
-    let args = ["host", "prove", OUTPOINT, "--dry-run"]
+/// Parsing checks only the signature encoding, not the signature.
+const SIGNED: [&str; 6] = [
+    "--address",
+    "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu",
+    "--message",
+    "message",
+    "--signature",
+    "smpAkgwRQIhAKhSHOe4EaSt0a4mn+BQdQGuirn2vIn/a2Z4R6YplK0AAiBG+iFd4tbWCVyT0q8daaBXVfss7lHhpOVsr+KWLgF1CgEhAzDVT9DdQgpuX402JPXzSCyuNQ951fB1O/W+75wtka88",
+];
+
+/// Parse prove arguments after `host prove <OUTPOINT>` and the signature flags.
+fn prove(args: &[&str]) -> clap::error::Result<Cli> {
+    let args = ["host", "prove", OUTPOINT]
         .into_iter()
+        .chain(SIGNED)
         .chain(args.iter().copied());
     Cli::try_parse_from(args)
+}
+
+/// Parse prove arguments after `host prove <OUTPOINT> --dry-run` and the signature flags.
+fn cli(args: &[&str]) -> clap::error::Result<Cli> {
+    prove(&[&["--dry-run"], args].concat())
 }
 
 fn parse(args: &[&str]) -> Result<ContextOptions> {
@@ -103,10 +119,7 @@ fn incomplete_auth_and_invalid_values_fail_during_parsing() -> Result<()> {
 #[test]
 fn prove_minimum_parses_into_the_domain_range() -> Result<()> {
     let parse_prove = |extra: &[&str]| -> Result<ProveOptions> {
-        let args = ["host", "prove", OUTPOINT]
-            .into_iter()
-            .chain(extra.iter().copied());
-        let Command::Prove(options) = Cli::try_parse_from(args)?.command else {
+        let Command::Prove(options) = prove(extra)?.command else {
             bail!("expected prove command");
         };
         Ok(options)
@@ -119,9 +132,7 @@ fn prove_minimum_parses_into_the_domain_range() -> Result<()> {
     );
     for value in ["0", "2100000000000001", "-1", "1.5", "one"] {
         let flag = format!("--minimum-sats={value}");
-        let error = Cli::try_parse_from(["host", "prove", OUTPOINT, "--dry-run", &flag])
-            .err()
-            .context("invalid minimum accepted")?;
+        let error = cli(&[&flag]).err().context("invalid minimum accepted")?;
         assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
     }
     Ok(())
@@ -129,17 +140,11 @@ fn prove_minimum_parses_into_the_domain_range() -> Result<()> {
 
 #[test]
 fn prove_needs_exactly_one_of_output_and_dry_run() -> Result<()> {
-    let parse = |extra: &[&str]| {
-        let args = ["host", "prove", OUTPOINT]
-            .into_iter()
-            .chain(extra.iter().copied());
-        Cli::try_parse_from(args)
-    };
-    let Command::Prove(options) = parse(&["--output", "claim.receipt"])?.command else {
+    let Command::Prove(options) = prove(&["--output", "claim.receipt"])?.command else {
         bail!("expected prove command");
     };
     assert_eq!(options.output, Some(PathBuf::from("claim.receipt")));
-    let Command::Prove(options) = parse(&["--dry-run"])?.command else {
+    let Command::Prove(options) = prove(&["--dry-run"])?.command else {
         bail!("expected prove command");
     };
     assert_eq!(options.output, None);
@@ -150,8 +155,42 @@ fn prove_needs_exactly_one_of_output_and_dry_run() -> Result<()> {
             clap::error::ErrorKind::ArgumentConflict,
         ),
     ] {
-        let error = parse(extra).err().context("invalid flags accepted")?;
+        let error = prove(extra).err().context("invalid flags accepted")?;
         assert_eq!(error.kind(), kind);
+    }
+    Ok(())
+}
+
+#[test]
+fn prove_needs_an_address_message_and_well_formed_signature() -> Result<()> {
+    // Replace or drop one flag of SIGNED, then parse a dry run.
+    let parse = |flag: &str, value: Option<&str>| -> Result<clap::error::ErrorKind> {
+        let mut args = vec!["host", "prove", OUTPOINT, "--dry-run"];
+        for pair in SIGNED.chunks(2) {
+            match (pair, value) {
+                ([name, _], Some(value)) if *name == flag => args.extend([flag, value]),
+                ([name, _], None) if *name == flag => {}
+                _ => args.extend(pair),
+            }
+        }
+        let error = Cli::try_parse_from(args).err().context("flags accepted")?;
+        Ok(error.kind())
+    };
+    for flag in ["--address", "--message", "--signature"] {
+        assert_eq!(
+            parse(flag, None)?,
+            clap::error::ErrorKind::MissingRequiredArgument
+        );
+    }
+    for (flag, value) in [
+        ("--signature", "smp!"),
+        ("--signature", "pofAAAA"),
+        ("--address", "not-an-address"),
+    ] {
+        assert_eq!(
+            parse(flag, Some(value))?,
+            clap::error::ErrorKind::ValueValidation
+        );
     }
     Ok(())
 }

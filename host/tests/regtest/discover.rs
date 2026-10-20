@@ -1,5 +1,5 @@
 use crate::support::{
-    MINING_ADDRESS, Node, command, image, rejection, success,
+    Node, WALLET, WALLET_ADDRESS, command, image, rejection, success,
     transactions::{broadcast, mined, spend},
 };
 use anyhow::{Context, Result};
@@ -25,7 +25,7 @@ fn discover(node: &Node, address: &Address) -> Result<Vec<OutPoint>> {
 fn discovery_lists_confirmed_coins_across_pages_and_feeds_the_prover() -> Result<()> {
     let image = image()?;
     let mining = Address::p2wsh(&ScriptBuf::from_bytes(vec![0x51]), Network::Regtest);
-    let destination = MINING_ADDRESS
+    let destination = WALLET_ADDRESS
         .parse::<Address<_>>()?
         .require_network(Network::Regtest)?;
     let node = Node::start(
@@ -90,11 +90,19 @@ fn discovery_lists_confirmed_coins_across_pages_and_feeds_the_prover() -> Result
         "regtest",
         "prove",
         &[
-            &outputs.first().context("discovered coin")?.to_string(),
-            "--dry-run",
-            "--minimum-sats",
-            "2000000000",
-        ],
+            &[
+                outputs
+                    .first()
+                    .context("discovered coin")?
+                    .to_string()
+                    .as_str(),
+                "--dry-run",
+                "--minimum-sats",
+                "2000000000",
+            ][..],
+            &WALLET,
+        ]
+        .concat(),
     )?)?;
     assert_eq!(report["claim"]["minimum_sats"], 2_000_000_000_u64);
     // An unused address is an empty result, even when other addresses have history.

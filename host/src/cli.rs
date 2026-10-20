@@ -1,7 +1,9 @@
 use crate::connection::utreexod_rpc;
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand};
-use greenhold_core::{eligibility::MinimumAmount, network::SupportedNetwork};
+use greenhold_core::{
+    eligibility::MinimumAmount, network::SupportedNetwork, verification::Signature,
+};
 use std::path::PathBuf;
 use url::Url;
 
@@ -66,6 +68,19 @@ pub struct InspectOptions {
 pub struct ProveOptions {
     /// Candidate output as TXID:VOUT (zero-based output index).
     pub outpoint: bitcoin::OutPoint,
+
+    /// Address that signed --message. Its script must lock the coin.
+    #[arg(long)]
+    pub address: bitcoin::Address<bitcoin::address::NetworkUnchecked>,
+
+    /// Message that --signature signs.
+    #[arg(long, value_name = "TEXT")]
+    pub message: String,
+
+    /// BIP-322 signature: simple (smp) for P2WPKH or P2TR, full (ful) for P2PKH,
+    /// P2SH-P2WPKH, P2WPKH, or P2TR, or legacy for P2PKH.
+    #[arg(long)]
+    pub signature: Signature,
 
     /// Minimum coin value M in satoshis, up to 2100000000000000.
     #[arg(long, value_name = "SATS", default_value = "1")]

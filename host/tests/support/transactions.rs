@@ -1,10 +1,16 @@
-use super::Node;
-use anyhow::{Context, Result};
+use super::{Node, WALLET_ADDRESS, WALLET_PATH, WALLET_SEED};
+use anyhow::{Context, Result, bail};
 use bitcoin::{
-    Amount, OutPoint, ScriptBuf, Transaction, TxIn, TxOut, Witness,
+    Address, Amount, CompressedPublicKey, EcdsaSighashType, Network, OutPoint, ScriptBuf,
+    Transaction, TxIn, TxOut, Witness,
     absolute::LockTime,
+    bip32::{DerivationPath, Xpriv},
     consensus::{deserialize, serialize},
+    ecdsa,
+    hashes::Hash,
     hex::{DisplayHex, FromHex},
+    secp256k1::{Message, Secp256k1},
+    sighash::SighashCache,
     transaction::Version,
 };
 use serde_json::json;
@@ -27,6 +33,35 @@ pub fn spend(outpoint: OutPoint, values: &[u64], script: &ScriptBuf) -> Transact
             })
             .collect(),
     }
+}
+
+/// Spend a test wallet P2WPKH coin worth `value` on regtest.
+pub fn spend_signed(
+    outpoint: OutPoint,
+    value: Amount,
+    values: &[u64],
+    script: &ScriptBuf,
+) -> Result<Transaction> {
+    let secp = Secp256k1::new();
+    let key = Xpriv::new_master(Network::Regtest, &WALLET_SEED)?
+        .derive_priv(&secp, &WALLET_PATH.parse::<DerivationPath>()?)?
+        .to_priv();
+    let public = CompressedPublicKey::from_private_key(&secp, &key)?;
+    let address = Address::p2wpkh(&public, Network::Regtest);
+    if address.to_string() != WALLET_ADDRESS {
+        bail!("test wallet key does not match its address");
+    }
+    let mut transaction = spend(outpoint, values, script);
+    let sighash = SighashCache::new(&transaction).p2wpkh_signature_hash(
+        0,
+        &address.script_pubkey(),
+        value,
+        EcdsaSighashType::All,
+    )?;
+    let signature = secp.sign_ecdsa(&Message::from_digest(sighash.to_byte_array()), &key.inner);
+    transaction.input[0].witness =
+        Witness::p2wpkh(&ecdsa::Signature::sighash_all(signature), &public.0);
+    Ok(transaction)
 }
 
 pub fn mined(node: &Node, height: u32, script: &ScriptBuf) -> Result<OutPoint> {

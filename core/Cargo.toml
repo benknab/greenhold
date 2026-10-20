@@ -10,6 +10,7 @@ workspace = true
 
 [dependencies]
 anyhow.workspace = true
+bip322 = "=0.0.12"
 bitcoin.workspace = true
 serde.workspace = true
 sha2 = "=0.10.9"

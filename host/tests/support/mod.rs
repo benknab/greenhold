@@ -22,6 +22,30 @@ pub mod transactions;
 
 pub const MINING_ADDRESS: &str = "bcrt1qusgerygumpd0ztn735s5pypq6wsv2zzhuc4yak";
 
+/// The regtest test wallet: BIP-32 test vector 1 seed, P2WPKH key at m/84'/1'/0'/0/0.
+/// `signer/` made the BIP-322 simple signatures over `MESSAGE` with this seed.
+pub const WALLET_ADDRESS: &str = "bcrt1q7f0pjwhc3jzzv0w4uurm589506glv2dggfan4s";
+pub const WALLET_PATH: &str = "m/84'/1'/0'/0/0";
+pub const WALLET_SEED: [u8; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+const MESSAGE: &str = "Greenhold regtest";
+pub const WALLET: [&str; 6] = [
+    "--address",
+    WALLET_ADDRESS,
+    "--message",
+    MESSAGE,
+    "--signature",
+    "smpAkcwRAIgNno2DwKezTtqqFm/cIfTY54R/h9/4aprHuQGCgjDIKECIG72IwNvtX40SYOmW1YmoqCdjM20PsNGmq/c0shpcuYXASECDH9N4cx2D8Bod1sVE9Z9CngC8LSxxhqoV4Tr9yKQWyc=",
+];
+/// The same seed's P2TR key at m/86'/1'/0'/0/0. It locks no coin in the scenarios.
+pub const TAPROOT_WALLET: [&str; 6] = [
+    "--address",
+    "bcrt1pzh75rtx74l85v2xqfr5uln7mhy40vyqzm68ml4yngcqy9v085tqqpe5h98",
+    "--message",
+    MESSAGE,
+    "--signature",
+    "smpAUCmB//A6JQ5tpwr4N0kQd13rKN4NAesK39e/+2FK8nP/a/ALpQjOZwQmJ8Dewl//oZF/cMQYWIkBOAWwAla6XoW",
+];
+
 pub fn image() -> Result<GenericImage> {
     Ok(
         GenericBuildableImage::new("greenhold-utreexod-test", "0.6.0")

@@ -10,10 +10,10 @@ mod verify;
 #[cfg(test)]
 mod test_support;
 
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, Result, bail};
 use bitcoin::hex::DisplayHex;
 use clap::Parser;
-use greenhold_core::{claim::Claim, input::ClaimInput};
+use greenhold_core::{claim::Claim, input::ClaimInput, verification::verify_signature};
 use std::{fs, process::ExitCode};
 
 fn main() -> ExitCode {
@@ -40,13 +40,25 @@ fn run(cli: cli::Cli) -> Result<()> {
             }
         }
         cli::Command::Prove(options) => {
+            let network = options.context.network.into();
+            let address = options
+                .address
+                .require_network(network)
+                .context("address does not match the requested network")?;
+            // Check the signature before any node access. The guest does not check it yet.
+            let script = address.script_pubkey();
+            verify_signature(&script, &options.message, &options.signature)
+                .context("BIP-322 signature check failed")?;
             let input = context::Input::new(
-                options.context.network.into(),
+                network,
                 options.context.first_height,
                 options.context.last_height,
             )?;
             let rpc = options.context.connections.rpc_config()?;
             let (context, coin) = coin::fetch(options.outpoint, input, options.minimum_sats, &rpc)?;
+            if coin.witness().coin().output().script_pubkey != script {
+                bail!("--address does not lock the coin");
+            }
             let claim = Claim::new(&context, options.minimum_sats);
             let input = ClaimInput::new(context, coin.witness().clone(), options.minimum_sats);
             // Execution is fast, so a rejected input fails before the slow proving step.

@@ -1,10 +1,10 @@
 use crate::support::{
-    MINING_ADDRESS, Node, command, command_with_timeout, context_digest, image, inspect, rejection,
-    success,
-    transactions::{broadcast, mined, spend},
+    MINING_ADDRESS, Node, TAPROOT_WALLET, WALLET, WALLET_ADDRESS, command, command_with_timeout,
+    context_digest, image, inspect, rejection, success,
+    transactions::{broadcast, mined, spend_signed},
 };
 use anyhow::{Context, Result};
-use bitcoin::{Address, Network, OutPoint, ScriptBuf, hex::FromHex};
+use bitcoin::{Address, Amount, Network, OutPoint, Transaction, hex::FromHex};
 use greenhold_core::claim::Claim;
 use greenhold_guest_builder::GREENHOLD_GUEST_ID;
 use risc0_zkvm::{InnerReceipt, Receipt, sha::Digest};
@@ -17,37 +17,19 @@ const TAG: &[u8] = b"greenhold/receipt/v1\0";
 #[test]
 #[ignore = "requires Docker; runs Utreexod nodes"]
 fn prove_and_verify_use_real_transactions_and_reject_ineligible_coins() -> Result<()> {
-    let script = ScriptBuf::from_bytes(vec![0x51]);
-    let address = Address::p2wsh(&script, Network::Regtest);
-    let node = Node::start(
-        image()?,
-        &[
-            "--utreexoproofindex".into(),
-            "--utreexoproofindexmaxmemory=250".into(),
-            format!("--miningaddr={address}"),
-        ],
-        None,
-    )?;
-    // Three regtest versionbits windows activate SegWit and mature the coinbase.
-    node.rpc("generate", &json!([432]))?;
-    let funding = spend(
-        mined(&node, 1, &address.script_pubkey())?,
-        &[2_000_000_000, 2_999_990_000],
-        &address.script_pubkey(),
-    );
-    broadcast(&node, &funding)?;
-    node.rpc("generate", &json!([1]))?;
+    let (node, address, funding) = funded_node()?;
     let input = OutPoint::new(funding.compute_txid(), 0).to_string();
-    let claim =
-        |args: &[&str]| command(&node, "regtest", "prove", &[args, &["--dry-run"]].concat());
+    // Prove with the test wallet's signature.
+    let prove = |args: &[&str], timeout| {
+        let args = [args, &WALLET].concat();
+        command_with_timeout(&node, "regtest", "prove", &args, timeout)
+    };
+    let claim = |args: &[&str]| prove(&[args, &["--dry-run"]].concat(), Duration::from_secs(30));
     let directory = tempfile::tempdir()?;
     let path = directory.path().join("claim.receipt");
     let receipt = path.to_str().context("receipt path")?;
     // The only real proof in this scenario. The other runs stop before proving.
-    let report = success(&command_with_timeout(
-        &node,
-        "regtest",
-        "prove",
+    let report = success(&prove(
         &[
             &input,
             "433",
@@ -78,11 +60,9 @@ fn prove_and_verify_use_real_transactions_and_reject_ineligible_coins() -> Resul
     let rejected_path = directory.path().join("rejected.receipt");
     let rejected = rejected_path.to_str().context("receipt path")?;
     rejection(
-        &command(
-            &node,
-            "regtest",
-            "prove",
+        &prove(
             &[&input, "--minimum-sats", "2000000001", "--output", rejected],
+            Duration::from_secs(30),
         )?,
         "below the minimum",
     );
@@ -96,6 +76,16 @@ fn prove_and_verify_use_real_transactions_and_reject_ineligible_coins() -> Resul
     rejection(&claim(&[&input, "--first-height", "432"])?, "cutoff");
     let bad_index = OutPoint::new(funding.compute_txid(), 99).to_string();
     rejection(&claim(&[&bad_index])?, "absent from the confirmed UTXO set");
+    // A valid signature from another script does not cover this coin.
+    rejection(
+        &command(
+            &node,
+            "regtest",
+            "prove",
+            &[&[input.as_str(), "--dry-run"][..], &TAPROOT_WALLET].concat(),
+        )?,
+        "--address does not lock the coin",
+    );
 
     node.rpc("generate", &json!([1]))?;
     let mature = success(&claim(&[&young, "--first-height", "335"])?)?;
@@ -107,7 +97,12 @@ fn prove_and_verify_use_real_transactions_and_reject_ineligible_coins() -> Resul
     let report = success(&claim(&[&input, "--first-height", "433"])?)?;
     assert_claim(&node, &report, 433, 434, 1)?;
     let outpoint = OutPoint::new(funding.compute_txid(), 0);
-    let spending = spend(outpoint, &[1_999_990_000], &address.script_pubkey());
+    let spending = spend_signed(
+        outpoint,
+        Amount::from_sat(2_000_000_000),
+        &[1_999_990_000],
+        &address.script_pubkey(),
+    )?;
     broadcast(&node, &spending)?;
     node.rpc("generate", &json!([1]))?;
     rejection(&claim(&[&input])?, "absent from the confirmed UTXO set");
@@ -119,6 +114,35 @@ fn prove_and_verify_use_real_transactions_and_reject_ineligible_coins() -> Resul
     // T is now historical, and the proved coin is spent. The claim was about T.
     assert_eq!(success(&verify(&node, "regtest", receipt)?)?, accepted);
     assert_verify_fails_closed(&node, &path)
+}
+
+/// A node with active segregated witness and a confirmed test wallet transaction at 433.
+/// Its two outputs pay the test wallet's P2WPKH address.
+fn funded_node() -> Result<(Node, Address, Transaction)> {
+    let address = WALLET_ADDRESS
+        .parse::<Address<_>>()?
+        .require_network(Network::Regtest)?;
+    let node = Node::start(
+        image()?,
+        &[
+            "--utreexoproofindex".into(),
+            "--utreexoproofindexmaxmemory=250".into(),
+            format!("--miningaddr={address}"),
+        ],
+        None,
+    )?;
+    // Three regtest versionbits windows activate SegWit and mature the coinbase.
+    node.rpc("generate", &json!([432]))?;
+    // A regtest coinbase at height 1 pays the full 50 BTC subsidy.
+    let funding = spend_signed(
+        mined(&node, 1, &address.script_pubkey())?,
+        Amount::from_sat(5_000_000_000),
+        &[2_000_000_000, 2_999_990_000],
+        &address.script_pubkey(),
+    )?;
+    broadcast(&node, &funding)?;
+    node.rpc("generate", &json!([1]))?;
+    Ok((node, address, funding))
 }
 
 /// Reject a changed receipt, another chain, and a node without historical roots.
