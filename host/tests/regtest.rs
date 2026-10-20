@@ -1,5 +1,5 @@
-#[path = "regtest/coin.rs"]
-mod coin;
+#[path = "regtest/claim.rs"]
+mod claim;
 mod support;
 
 use anyhow::{Context, Result};

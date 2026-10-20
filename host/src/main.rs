@@ -7,7 +7,9 @@ mod context;
 mod test_support;
 
 use anyhow::Result;
+use bitcoin::hex::DisplayHex;
 use clap::Parser;
+use greenhold_core::claim::Claim;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
@@ -22,26 +24,21 @@ fn main() -> ExitCode {
 
 fn run(cli: cli::Cli) -> Result<()> {
     match cli.command {
-        cli::Command::Coin(options) => {
+        cli::Command::Claim(options) => {
             let input = context::Input::new(
                 options.context.network.into(),
                 options.context.first_height,
                 options.context.last_height,
             )?;
             let rpc = options.context.connections.rpc_config()?;
-            let (context, coin) = coin::fetch(options.outpoint, input, options.minimum_sats, &rpc)?;
-            let witness = coin.witness();
+            let (context, _coin) =
+                coin::fetch(options.outpoint, input, options.minimum_sats, &rpc)?;
+            let claim = Claim::new(&context, options.minimum_sats);
             println!(
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
-                    "network": context.network(),
-                    "context_digest": context.digest(),
-                    "context": context,
-                    "witness": witness,
-                    "minimum_sats": options.minimum_sats,
-                    "amount_sats": witness.coin().output().value.to_sat(),
-                    "address": bitcoin::Address::from_script(&witness.coin().output().script_pubkey,
-                        context.network()).ok().map(|address| address.to_string()),
+                    "claim": claim,
+                    "encoded": claim.to_bytes().as_hex().to_string(),
                 }))?
             );
         }

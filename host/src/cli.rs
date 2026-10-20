@@ -19,14 +19,15 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Fetch headers and historical Utreexo state from the chosen Utreexod RPC node.
+    /// Check one coin's eligibility and print the public claim (node proofs are tip-only).
+    Claim(ClaimOptions),
+    /// Test tool: fetch headers and historical Utreexo state. Replaced by verify.
+    #[command(hide = true)]
     Context(ContextOptions),
-    /// Fetch one coin and check its eligibility at an exact context (node proofs are tip-only).
-    Coin(CoinOptions),
 }
 
 #[derive(Debug, Args)]
-pub struct CoinOptions {
+pub struct ClaimOptions {
     /// Candidate output as TXID:VOUT (zero-based output index).
     pub outpoint: bitcoin::OutPoint,
 
@@ -44,7 +45,7 @@ pub struct ContextOptions {
     #[arg(long, default_value = "bitcoin")]
     pub network: SupportedNetwork,
 
-    /// Last block height T. Defaults to the RPC tip (the proof's block for coin).
+    /// Last block height T. Defaults to the RPC tip (the proof's block for claim).
     pub last_height: Option<u32>,
 
     /// First block height X. Defaults to T for a single-block context.

@@ -169,6 +169,11 @@ impl ChainContext {
     }
 
     #[must_use]
+    pub fn supported_network(&self) -> SupportedNetwork {
+        self.first.network
+    }
+
+    #[must_use]
     pub fn first(&self) -> &BlockEndpoint {
         &self.first
     }

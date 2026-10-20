@@ -1,6 +1,9 @@
 use anyhow::Result;
 use bitcoin::{Network, blockdata::constants::genesis_block};
-use greenhold_core::context::{AccumulatorState, BlockEndpoint, ChainContext};
+use greenhold_core::{
+    context::{AccumulatorState, BlockEndpoint, ChainContext},
+    network::SupportedNetwork,
+};
 use serde_json::json;
 
 fn block(height: u32) -> Result<BlockEndpoint> {
@@ -126,6 +129,8 @@ fn networks_select_genesis_and_work_limits_and_bind_the_digest() -> Result<()> {
         let context =
             ChainContext::new(genesis.clone(), genesis, AccumulatorState::new(0, vec![])?)?;
         assert_eq!(context.network(), network);
+        let found = SupportedNetwork::from_genesis(genesis_block(network).block_hash())?;
+        assert_eq!(Network::from(found), network);
         assert_eq!(
             serde_json::from_slice::<ChainContext>(&serde_json::to_vec(&context)?)?,
             context
@@ -166,6 +171,7 @@ fn rejects_testnets_in_constructors_and_serialized_contexts() -> Result<()> {
     let context = ChainContext::new(block(1)?, block(2)?, AccumulatorState::new(0, vec![])?)?;
     for network in [Network::Testnet, Network::Testnet4] {
         assert!(BlockEndpoint::new(network, 0, genesis_block(network).header).is_err());
+        assert!(SupportedNetwork::from_genesis(genesis_block(network).block_hash()).is_err());
         let mut encoded = serde_json::to_value(&context)?;
         encoded["first"]["network"] = json!(network);
         encoded["last"]["network"] = json!(network);

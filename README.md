@@ -27,11 +27,30 @@ git clone https://github.com/benknab/greenhold.git
 cd greenhold
 rzup install rust 1.97.0
 rzup default rust 1.97.0
-cargo run --locked --release -- context 900000
 ```
 
-This builds the host and guest, then retrieves public chain context from live nodes.
 `rzup default` selects the guest compiler for all projects on your machine.
+
+## Usage
+
+Warning: the `claim` command sends your outpoint to the Utreexod node. The default
+public node can link that coin to your request. To keep the coin private, use your
+own node with `--utreexod-rpc`, `--utreexod-rpc-user`, and `--utreexod-rpc-password`.
+
+```sh
+cargo run --locked --release -- claim <TXID:VOUT> --first-height <X> --minimum-sats <M>
+```
+
+This command builds the host and guest. It then checks one coin and prints the claim:
+
+1. The node supplies the coin, its Utreexo membership proof, and the chain state.
+2. The host checks that the coin is eligible for the claim.
+3. The host prints the public claim as JSON and as canonical bytes in hex.
+
+The output contains no coin data. T is the node's current tip, because the node
+proves membership only at its tip. Without `--first-height`, X is T. Without
+`--minimum-sats`, M is 1 satoshi. Use `--network signet` or `--network regtest`
+for other networks.
 
 ## Development
 

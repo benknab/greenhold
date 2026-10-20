@@ -2,15 +2,15 @@ use anyhow::Result;
 use std::process::Command;
 
 #[test]
-fn coin_cli_requires_an_outpoint_and_explains_tip_only_proofs() -> Result<()> {
+fn claim_cli_requires_an_outpoint_and_explains_tip_only_proofs() -> Result<()> {
     let binary = env!("CARGO_BIN_EXE_greenhold-host");
-    let help = Command::new(binary).args(["coin", "--help"]).output()?;
+    let help = Command::new(binary).args(["claim", "--help"]).output()?;
     assert!(help.status.success());
     let help = String::from_utf8(help.stdout)?;
     assert!(help.contains("<OUTPOINT> [LAST_HEIGHT]"));
     assert!(help.contains("tip-only"));
     assert!(help.contains("--minimum-sats <SATS>"));
-    for args in [vec!["coin"], vec!["coin", "not-an-outpoint"]] {
+    for args in [vec!["claim"], vec!["claim", "not-an-outpoint"]] {
         let output = Command::new(binary).args(args).output()?;
         assert!(!output.status.success());
         assert!(String::from_utf8(output.stderr)?.contains("OUTPOINT"));
@@ -19,13 +19,13 @@ fn coin_cli_requires_an_outpoint_and_explains_tip_only_proofs() -> Result<()> {
 }
 
 #[test]
-fn coin_cli_rejects_minimum_outside_money_range_before_node_access() -> Result<()> {
+fn claim_cli_rejects_minimum_outside_money_range_before_node_access() -> Result<()> {
     let binary = env!("CARGO_BIN_EXE_greenhold-host");
     let outpoint = format!("{}:0", "11".repeat(32));
     for value in ["0", "2100000000000001"] {
         // An unused local port: reaching node access would fail with exit code 1.
         let output = Command::new(binary)
-            .args(["coin", &outpoint, "--minimum-sats", value])
+            .args(["claim", &outpoint, "--minimum-sats", value])
             .args(["--utreexod-rpc", "http://127.0.0.1:9/"])
             .args([
                 "--utreexod-rpc-user",
