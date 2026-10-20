@@ -44,6 +44,10 @@ where
 }
 
 impl Response {
+    pub fn parse_batch(bytes: &[u8]) -> Result<Vec<Self>> {
+        serde_json::from_slice(bytes).map_err(|_| anyhow!("invalid JSON-RPC batch response"))
+    }
+
     pub fn parse(bytes: &[u8]) -> Result<Self> {
         // Serde errors can quote remote values. Keep those out of error chains.
         let response: Self =

@@ -213,6 +213,124 @@ fn address_search_preserves_options_and_distinguishes_exhaustion_from_failures()
 }
 
 #[test]
+fn batched_coin_lookup_restores_order_and_preserves_request_ids() -> Result<()> {
+    let outpoints = [
+        OutPoint::new(BLOCK.parse()?, 2),
+        OutPoint::new(BLOCK.parse()?, 3),
+    ];
+    let coin = json!({"bestblock":BLOCK,"confirmations":2,"coinbase":false,
+        "value":0.000_000_01,"scriptPubKey":{"hex":"51"}});
+    for include_mempool in [false, true] {
+        let requests: Vec<_> = outpoints
+            .iter()
+            .enumerate()
+            .map(|(index, outpoint)| {
+                json!({
+                    "jsonrpc":"2.0","id":index+2,"method":"gettxout",
+                    "params":[outpoint.txid,outpoint.vout,include_mempool]
+                })
+            })
+            .collect();
+        let replies = vec![
+            (
+                best_request(),
+                json!({"id":1,"result":{"hash":BLOCK,"height":123}}).to_string(),
+            ),
+            (
+                json!(requests),
+                json!([{"id":3,"result":null},{"id":2,"result":coin}]).to_string(),
+            ),
+            (
+                json!({"jsonrpc":"1.0","id":4,"method":"getbestblock","params":[]}),
+                json!({"id":4,"result":{"hash":BLOCK,"height":123}}).to_string(),
+            ),
+        ];
+        let (config, task) = serve("200 OK", replies, true)?;
+        let mut client = Client::new(&config);
+        assert!(client.tx_outs(&[], include_mempool)?.is_empty());
+        client.best_block()?;
+        let outputs = client.tx_outs(&outpoints, include_mempool)?;
+        assert_eq!(outputs.len(), 2);
+        assert_eq!(
+            outputs[0].as_ref().context("unspent coin")?.value.to_sat(),
+            1
+        );
+        assert!(outputs[1].is_none());
+        client.best_block()?;
+        task.join().map_err(|_| anyhow!("RPC mock panicked"))??;
+    }
+    Ok(())
+}
+
+#[test]
+fn invalid_batch_responses_fail_without_partial_results() -> Result<()> {
+    let outpoints = [
+        OutPoint::new(BLOCK.parse()?, 2),
+        OutPoint::new(BLOCK.parse()?, 3),
+    ];
+    let requests: Vec<_> = outpoints
+        .iter()
+        .enumerate()
+        .map(|(index, outpoint)| {
+            json!({
+                "jsonrpc":"2.0","id":index+1,"method":"gettxout",
+                "params":[outpoint.txid,outpoint.vout,false]
+            })
+        })
+        .collect();
+    let id_error = "JSON-RPC batch response IDs do not match requests";
+    for (reply, expected) in [
+        (json!([]), id_error),
+        (json!([{"id":1,"result":null}]), id_error),
+        (
+            json!([{"id":1,"result":null},{"id":1,"result":null}]),
+            id_error,
+        ),
+        (
+            json!([{"id":1,"result":null},{"id":3,"result":null}]),
+            id_error,
+        ),
+        (
+            json!([{"id":0,"result":null},{"id":1,"result":null}]),
+            id_error,
+        ),
+        (
+            json!([{"id":1,"result":null},{"id":2,"result":null},{"id":3,"result":null}]),
+            id_error,
+        ),
+        (
+            json!({"id":1,"result":null}),
+            "invalid JSON-RPC batch response",
+        ),
+        (
+            json!([{"id":"secret","result":null}]),
+            "invalid JSON-RPC batch response",
+        ),
+        (
+            json!([{"id":1,"result":null},{"id":2,"error":{"code":-5,"message":"secret"}}]),
+            "node rejected request",
+        ),
+        (
+            json!([{"id":1,"result":null},{"id":2}]),
+            "missing JSON-RPC result",
+        ),
+        (
+            json!([{"id":1,"result":null},{"id":2,"result":"secret"}]),
+            "invalid JSON-RPC result",
+        ),
+    ] {
+        let (config, task) = serve("200 OK", vec![(json!(requests), reply.to_string())], false)?;
+        let result = Client::new(&config).tx_outs(&outpoints, false);
+        task.join().map_err(|_| anyhow!("RPC mock panicked"))??;
+        assert_eq!(
+            result.err().context("invalid batch accepted")?.to_string(),
+            expected
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn best_block_requires_hash_and_unsigned_height() -> Result<()> {
     let valid = json!({"hash":BLOCK,"height":123,"extra":"ignored"});
     let block: BlockLocation = serde_json::from_value(valid)?;

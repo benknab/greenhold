@@ -1,6 +1,6 @@
 use super::{
-    AddressTransaction, BlockHeaderResponse, BlockLocation, ChainTipProof, Config, Roots,
-    TxOutResponse,
+    AddressTransaction, BlockHeaderResponse, BlockLocation, ChainTipProof, Config,
+    ResponseTooLarge, Roots, TxOutResponse,
 };
 use crate::connection::{
     MAX_MESSAGE, TIMEOUT,
@@ -9,13 +9,15 @@ use crate::connection::{
 };
 use anyhow::{Result, anyhow, bail};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use bitcoin::{BlockHash, Txid};
+use bitcoin::{BlockHash, OutPoint, Txid};
 use serde::{Serialize, de::DeserializeOwned};
-use std::io::Read;
+use std::{io::Read, time::Duration};
 use ureq::{Agent, http::HeaderValue};
 
 // Transaction pages are much larger than header, coin, and proof responses.
 const MAX_HISTORY_PAGE: u64 = 16 * 1024 * 1024;
+const MAX_BATCH_REPLY: u64 = 1024 * 1024;
+const BULK_TIMEOUT: Duration = Duration::from_mins(1);
 
 /// HTTP JSON-RPC client with one method per supported Utreexod endpoint.
 pub struct Client<'a> {
@@ -73,6 +75,47 @@ impl<'a> Client<'a> {
         self.call("gettxout", (txid, vout, include_mempool))
     }
 
+    /// Check outpoints in one HTTP request. Return results in the input order.
+    /// Missing, duplicate, and unexpected response IDs invalidate the whole batch.
+    pub fn tx_outs(
+        &mut self,
+        outpoints: &[OutPoint],
+        include_mempool: bool,
+    ) -> Result<Vec<Option<TxOutResponse>>> {
+        if outpoints.is_empty() {
+            return Ok(Vec::new());
+        }
+        let first_id = self.id + 1;
+        let requests: Vec<_> = outpoints
+            .iter()
+            .map(|outpoint| {
+                self.id += 1;
+                Request {
+                    jsonrpc: Some("2.0"),
+                    id: self.id,
+                    method: "gettxout",
+                    params: (outpoint.txid, outpoint.vout, include_mempool),
+                }
+            })
+            .collect();
+        let bytes = self.send(
+            serde_json::to_vec(&requests)?,
+            MAX_BATCH_REPLY,
+            BULK_TIMEOUT,
+        )?;
+        let mut replies = Response::parse_batch(&bytes)?;
+        replies.sort_unstable_by_key(|reply| reply.id);
+        if replies.len() != outpoints.len()
+            || replies
+                .iter()
+                .zip(first_id..=self.id)
+                .any(|(reply, id)| reply.id != id)
+        {
+            bail!("JSON-RPC batch response IDs do not match requests");
+        }
+        replies.into_iter().map(Response::into_result).collect()
+    }
+
     /// Decoded address history with caller-selected input details and ordering.
     pub fn search_raw_transactions(
         &mut self,
@@ -86,6 +129,7 @@ impl<'a> Client<'a> {
             "searchrawtransactions",
             (address, 1, skip, count, u8::from(vin_extra), reverse),
             MAX_HISTORY_PAGE,
+            BULK_TIMEOUT,
         ) {
             // Utreexod uses ErrRPCNoTxInfo for unused addresses and exhausted pages.
             Err(error)
@@ -109,7 +153,7 @@ impl<'a> Client<'a> {
     }
 
     fn call<T: DeserializeOwned>(&mut self, method: &str, params: impl Serialize) -> Result<T> {
-        self.call_limited(method, params, MAX_MESSAGE)
+        self.call_limited(method, params, MAX_MESSAGE, TIMEOUT)
     }
 
     fn call_limited<T: DeserializeOwned>(
@@ -117,6 +161,7 @@ impl<'a> Client<'a> {
         method: &str,
         params: impl Serialize,
         limit: u64,
+        timeout: Duration,
     ) -> Result<T> {
         self.id += 1;
         let body = serde_json::to_vec(&Request {
@@ -125,6 +170,16 @@ impl<'a> Client<'a> {
             method,
             params,
         })?;
+        let bytes = self.send(body, limit, timeout)?;
+        // Remote bodies and transport errors may contain secrets. Do not print them.
+        let reply = Response::parse(&bytes)?;
+        if reply.id != self.id {
+            bail!("JSON-RPC response ID does not match request");
+        }
+        reply.into_result()
+    }
+
+    fn send(&self, body: Vec<u8>, limit: u64, timeout: Duration) -> Result<Vec<u8>> {
         let mut request = self
             .agent
             .post(self.config.url.as_str())
@@ -137,6 +192,9 @@ impl<'a> Client<'a> {
             request = request.header("Authorization", authorization);
         }
         let mut response = request
+            .config()
+            .timeout_global(Some(timeout))
+            .build()
             .send(body)
             .map_err(|_| anyhow!("RPC transport failed"))?;
         if !response.status().is_success() {
@@ -153,13 +211,8 @@ impl<'a> Client<'a> {
             .read_to_end(&mut bytes)
             .map_err(|_| anyhow!("RPC response read failed"))?;
         if bytes.len() as u64 > limit {
-            bail!("RPC response exceeds size limit");
+            return Err(ResponseTooLarge.into());
         }
-        // Remote bodies and transport errors may contain secrets. Do not print them.
-        let reply = Response::parse(&bytes)?;
-        if reply.id != self.id {
-            bail!("JSON-RPC response ID does not match request");
-        }
-        reply.into_result()
+        Ok(bytes)
     }
 }

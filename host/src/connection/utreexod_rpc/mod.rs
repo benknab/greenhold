@@ -1,11 +1,23 @@
 use bitcoin::block::Header;
-use std::fmt;
+use std::{error::Error, fmt};
 use url::Url;
 
 mod client;
 mod responses;
 pub use client::Client;
 pub use responses::{AddressTransaction, BlockLocation, ChainTipProof, Roots, TxOutResponse};
+
+/// A bounded RPC read exceeded its byte limit. Callers may retry a smaller page.
+#[derive(Debug)]
+pub struct ResponseTooLarge;
+
+impl fmt::Display for ResponseTooLarge {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("RPC response exceeds size limit")
+    }
+}
+
+impl Error for ResponseTooLarge {}
 
 pub struct Config {
     url: Url,

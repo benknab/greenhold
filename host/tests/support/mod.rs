@@ -6,7 +6,8 @@ use bitcoin::{
 };
 use serde_json::{Value, json};
 use std::{
-    process::{Command, Output, Stdio},
+    io::{Read as _, Seek as _},
+    process::{Command, Output},
     thread,
     time::{Duration, Instant},
 };
@@ -172,6 +173,9 @@ pub fn command_with_timeout(
     args: &[&str],
     timeout: Duration,
 ) -> Result<Output> {
+    // Temporary files prevent long discovery lists from filling a pipe while we wait.
+    let mut stdout = tempfile::tempfile()?;
+    let mut stderr = tempfile::tempfile()?;
     let mut child = Command::new(env!("CARGO_BIN_EXE_greenhold-host"))
         .args([
             command,
@@ -185,15 +189,24 @@ pub fn command_with_timeout(
             "test",
         ])
         .args(args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stdout(stdout.try_clone()?)
+        .stderr(stderr.try_clone()?)
         .spawn()?;
-    if child.wait_timeout(timeout)?.is_none() {
+    let Some(status) = child.wait_timeout(timeout)? else {
         child.kill()?;
         child.wait()?;
         bail!("{command} command timed out");
-    }
-    Ok(child.wait_with_output()?)
+    };
+    stdout.rewind()?;
+    stderr.rewind()?;
+    let mut output = Output {
+        status,
+        stdout: Vec::new(),
+        stderr: Vec::new(),
+    };
+    stdout.read_to_end(&mut output.stdout)?;
+    stderr.read_to_end(&mut output.stderr)?;
+    Ok(output)
 }
 
 pub fn success(output: &Output) -> Result<Value> {

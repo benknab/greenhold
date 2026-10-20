@@ -40,15 +40,16 @@ fn discovery_lists_confirmed_coins_across_pages_and_feeds_the_prover() -> Result
         None,
     )?;
     assert!(discover(&node, &destination)?.is_empty());
-    // Exactly two full pages, followed by Utreexod's end-of-results RPC error.
-    node.rpc("generate", &json!([200]))?;
+    // A full 1,000-transaction page, followed by Utreexod's end-of-results RPC error.
+    // The coin checks span ten batches.
+    node.rpc("generate", &json!([1_000]))?;
     let coins = discover(&node, &mining)?;
-    let mut expected = (1..=200)
+    let mut expected = (1..=1_000)
         .map(|height| mined(&node, height, &mining.script_pubkey()))
         .collect::<Result<Vec<_>>>()?;
     expected.sort_unstable();
     assert_eq!(coins, expected);
-    // Activate SegWit and mature the funding coin.
+    // Extend history beyond one page. SegWit is active and the funding coin is mature.
     node.rpc("generate", &json!([232]))?;
     let spent = mined(&node, 1, &mining.script_pubkey())?;
     let mut funding = spend(
@@ -83,7 +84,7 @@ fn discovery_lists_confirmed_coins_across_pages_and_feeds_the_prover() -> Result
     let mining_coins = discover(&node, &mining)?;
     assert!(!mining_coins.contains(&spent));
     assert!(mining_coins.contains(&OutPoint::new(funding.compute_txid(), 2)));
-    assert_eq!(mining_coins.len(), 433);
+    assert_eq!(mining_coins.len(), 1_233);
     let report = success(&command(
         &node,
         "regtest",

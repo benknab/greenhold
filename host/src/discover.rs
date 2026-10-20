@@ -3,7 +3,8 @@ use anyhow::{Context as _, Result, bail};
 use bitcoin::{Address, Network, OutPoint, blockdata::constants::genesis_block};
 use std::collections::BTreeSet;
 
-const PAGE_SIZE: u32 = 100;
+const PAGE_SIZE: u32 = 1_000;
+const COIN_BATCH_SIZE: usize = 100;
 
 /// Discover candidates from this node's address index, without proving membership.
 /// Use confirmed chain state only. A changed tip requires a new discovery run.
@@ -21,10 +22,18 @@ pub fn outpoints(
     let address = address.to_string();
     let mut candidates = BTreeSet::new();
     let mut skip = 0;
+    let mut page_size = PAGE_SIZE;
     loop {
-        let page = rpc
-            .search_raw_transactions(&address, skip, PAGE_SIZE, false, false)
-            .context("cannot search address transactions; node needs --addrindex and RPC access")?;
+        let page = match rpc.search_raw_transactions(&address, skip, page_size, false, false) {
+            Err(error) if error.is::<utreexod_rpc::ResponseTooLarge>() && page_size > 1 => {
+                // Retry the same offset. Keep the smaller size for the rest of this run.
+                page_size /= 2;
+                continue;
+            }
+            result => result.context(
+                "cannot search address transactions; node needs --addrindex and RPC access",
+            )?,
+        };
         let count = u32::try_from(page.len())?;
         // Confirmed history is oldest-first, including transaction order within a block.
         // Remove spends as we go, so gettxout runs only for the surviving candidates.
@@ -40,7 +49,7 @@ pub fn outpoints(
                     .map(|output| OutPoint::new(transaction.txid, output.n)),
             );
         }
-        if count < PAGE_SIZE {
+        if count < page_size {
             break;
         }
         skip = skip
@@ -49,15 +58,21 @@ pub fn outpoints(
     }
 
     let mut unspent = Vec::new();
-    for candidate in candidates {
-        if let Some(output) = rpc.tx_out(&candidate.txid, candidate.vout, false)? {
+    let candidates: Vec<_> = candidates.into_iter().collect();
+    for batch in candidates.chunks(COIN_BATCH_SIZE) {
+        let outputs = rpc.tx_outs(batch, false)?;
+        for (candidate, output) in batch
+            .iter()
+            .zip(outputs)
+            .filter_map(|(candidate, output)| output.map(|output| (candidate, output)))
+        {
             if output.best_block != tip {
                 bail!("chain tip changed during discovery; run discover again");
             }
             if output.confirmations == 0 || output.script_pub_key.hex != script {
                 bail!("RPC coin does not match the confirmed address output");
             }
-            unspent.push(candidate);
+            unspent.push(*candidate);
         }
     }
     if rpc.best_block()?.hash != tip {
