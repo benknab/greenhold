@@ -23,7 +23,7 @@ pub mod transactions;
 pub const MINING_ADDRESS: &str = "bcrt1qusgerygumpd0ztn735s5pypq6wsv2zzhuc4yak";
 
 /// The regtest test wallet: BIP-32 test vector 1 seed, P2WPKH key at m/84'/1'/0'/0/0.
-/// `signer/` made the BIP-322 simple signatures over `MESSAGE` with this seed.
+/// The original Bun/scure signer made the frozen BIP-322 signatures over `MESSAGE`.
 pub const WALLET_ADDRESS: &str = "bcrt1q7f0pjwhc3jzzv0w4uurm589506glv2dggfan4s";
 pub const WALLET_PATH: &str = "m/84'/1'/0'/0/0";
 pub const WALLET_SEED: [u8; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];

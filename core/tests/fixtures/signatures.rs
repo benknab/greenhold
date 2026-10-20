@@ -1,4 +1,5 @@
-/// `signer/` signatures using the public BIP-39 test mnemonic
+/// Frozen signatures from the original Bun/scure signer, retained for independent
+/// cross-implementation coverage. Uses the public BIP-39 test mnemonic
 /// ("abandon" x 11, "about") at the default BIP-44/49/84/86 paths.
 pub const MESSAGE: &str = "Greenhold BIP-322 test";
 pub const P2PKH: &str = "1LqBGSKuX5yYUonjxT5qGfpUsXKYYWeabA";

@@ -72,7 +72,7 @@ fn accepts_bip322_vectors_and_each_allowed_format() -> Result<()> {
             "PURVOQ544B6HUATVBJZN5EZJUU",
             "smpAUB6B2Rbupzua8LTQIF06516wzl+cwKy1be8RgoiW0riyXdKwe6GTz/5Hnb37m67pJwIKCh+D5jDueG6KpvYpmu8",
         ),
-        // Signatures from `signer/`.
+        // Frozen signatures from the original Bun/scure signer.
         (P2PKH, MESSAGE, P2PKH_FULL),
         (P2PKH, MESSAGE, P2PKH_LEGACY),
         (P2SH_P2WPKH, MESSAGE, P2SH_P2WPKH_FULL),
@@ -172,7 +172,7 @@ fn rejects_wrong_messages_signers_and_time_locks() {
             taproot_full,
             "time-locked",
         ),
-        // Signatures from `signer/`, checked against another message.
+        // Frozen Bun/scure signatures, checked against another message.
         (P2PKH, "other", P2PKH_LEGACY, invalid),
         (P2WPKH, "other", P2WPKH_SIMPLE, invalid),
         (P2TR, "other", P2TR_SIMPLE, invalid),
@@ -396,6 +396,44 @@ fn rejects_a_lock_time_or_a_sequence_alone() -> Result<()> {
             &encode_full(&transaction),
             "time-locked",
         );
+    }
+    Ok(())
+}
+
+#[test]
+fn verifies_rust_signer_across_scripts_formats_networks_and_messages() -> Result<()> {
+    use bitcoin::Network;
+    use greenhold_signer::{ScriptType, address, derive_key, seed_from_mnemonic, sign};
+
+    let seed = seed_from_mnemonic(
+        "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+        "",
+    )?;
+    for (script_type, expected) in [
+        (ScriptType::P2pkh, P2PKH),
+        (ScriptType::P2shP2wpkh, P2SH_P2WPKH),
+        (ScriptType::P2wpkh, P2WPKH),
+        (ScriptType::P2tr, P2TR),
+    ] {
+        for network in [Network::Bitcoin, Network::Signet, Network::Regtest] {
+            let key = derive_key(&seed, &script_type.default_path(network, 0, 0, 0)?)?;
+            let other_key = derive_key(&seed, &script_type.default_path(network, 0, 0, 1)?)?;
+            let other_script = address(script_type, &other_key, network).script_pubkey();
+            if network == Network::Bitcoin {
+                assert_eq!(address(script_type, &key, network).to_string(), expected);
+            }
+            let cases = script_type.formats().iter().flat_map(|&format| {
+                ["", MESSAGE, "é 🦀\n", "e\u{301} 🦀\n"].map(|message| (format, message))
+            });
+            for (format, message) in cases {
+                let signed = sign(script_type, format, &key, network, message)?;
+                let signature = signed.signature.parse()?;
+                let script = signed.address.script_pubkey();
+                verify_signature(&script, message, &signature)?;
+                assert!(verify_signature(&other_script, message, &signature).is_err());
+                assert!(verify_signature(&script, &format!("{message} "), &signature).is_err());
+            }
+        }
     }
     Ok(())
 }

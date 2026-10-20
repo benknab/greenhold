@@ -1,10 +1,9 @@
 use super::{Node, WALLET_ADDRESS, WALLET_PATH, WALLET_SEED};
 use anyhow::{Context, Result, bail};
 use bitcoin::{
-    Address, Amount, CompressedPublicKey, EcdsaSighashType, Network, OutPoint, ScriptBuf,
-    Transaction, TxIn, TxOut, Witness,
+    Address, Amount, CompressedPublicKey, EcdsaSighashType, Network, OutPoint, PrivateKey,
+    ScriptBuf, Transaction, TxIn, TxOut, Witness,
     absolute::LockTime,
-    bip32::{DerivationPath, Xpriv},
     consensus::{deserialize, serialize},
     ecdsa,
     hashes::Hash,
@@ -43,9 +42,10 @@ pub fn spend_signed(
     script: &ScriptBuf,
 ) -> Result<Transaction> {
     let secp = Secp256k1::new();
-    let key = Xpriv::new_master(Network::Regtest, &WALLET_SEED)?
-        .derive_priv(&secp, &WALLET_PATH.parse::<DerivationPath>()?)?
-        .to_priv();
+    let key = PrivateKey::new(
+        greenhold_signer::derive_key(&WALLET_SEED, &WALLET_PATH.parse()?)?,
+        Network::Regtest,
+    );
     let public = CompressedPublicKey::from_private_key(&secp, &key)?;
     let address = Address::p2wpkh(&public, Network::Regtest);
     if address.to_string() != WALLET_ADDRESS {
