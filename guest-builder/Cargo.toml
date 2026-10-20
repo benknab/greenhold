@@ -8,7 +8,12 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Build the guest in RISC Zero's pinned Docker image and check the committed image ID.
+reproducible = []
+
 [build-dependencies]
+anyhow.workspace = true
 risc0-build.workspace = true
 
 [package.metadata.risc0]

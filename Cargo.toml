@@ -40,3 +40,7 @@ panic = "deny"
 
 [profile.release]
 debug = 1
+
+# Separate output directory, so dev release builds cannot replace this binary.
+[profile.reproducible]
+inherits = "release"

@@ -36,6 +36,28 @@ The guest needs only the rzup Rust toolchain. You do not need `r0vm` or a full
 prover. The first build downloads one RISC Zero circuit file and checks its
 SHA-256 hash.
 
+The reproducible build also needs [Docker](https://docs.docker.com/get-docker/).
+
+## Builds
+
+Greenhold has two builds. They compile the same guest program in different
+environments, so they give different guest image IDs. The image ID identifies the
+guest program. A binary accepts a receipt only if the receipt has the binary's
+image ID.
+
+- **Reproducible build:** `cargo reproducible` writes
+  `target/reproducible/greenhold-host`. It compiles the guest in RISC Zero's
+  builder image `risczero/risc0-guest-builder:r0.1.97.0`, pinned by digest, for
+  `linux/amd64`. On other platforms, Docker runs the image in emulation. The
+  build fails unless the image ID equals the value in `guest-builder/image-id`.
+- **Development build:** `cargo build` and `cargo run` compile the guest with
+  your local rzup toolchain. The image ID depends on your machine. Use this build
+  only for development and tests.
+
+Use the reproducible build for every receipt that you share or verify. Build it
+from the same commit as the other person. A receipt from a different guest
+version fails verification.
+
 ## Utreexod requirements
 
 Configure Utreexod with these flags:
@@ -55,10 +77,11 @@ coin to your request. For privacy, use your own node with `--utreexod-rpc`,
 `--utreexod-rpc-user`, and `--utreexod-rpc-password`.
 
 ```sh
-cargo run --locked --release -- prove <TXID:VOUT> --first-height <X> --minimum-sats <M> --output <FILE>
+cargo reproducible
+target/reproducible/greenhold-host prove <TXID:VOUT> --first-height <X> --minimum-sats <M> --output <FILE>
 ```
 
-This command builds the host and guest. It then proves the claim for one coin:
+The `prove` command proves the claim for one coin:
 
 1. The node supplies the coin, its Utreexo membership proof, and the chain state.
 2. The host checks that the coin is eligible for the claim.
@@ -78,10 +101,11 @@ proves membership only at its tip. Without `--first-height`, X is T. Without
 `--minimum-sats`, M is 1 satoshi. Use `--network signet` or `--network regtest`
 for other networks.
 
-To check a receipt from another person, use your own node:
+To check a receipt from another person, use your own node and a reproducible
+build:
 
 ```sh
-cargo run --locked --release -- verify <FILE>
+target/reproducible/greenhold-host verify <FILE>
 ```
 
 1. The host reads the file, up to 1 MiB, and decodes the receipt.
@@ -124,6 +148,8 @@ they do not leak it.
 The prover sees all private data, so `prove` runs the prover on your machine.
 
 ## Development
+
+These checks use the development build:
 
 ```sh
 cargo fmt --all --check

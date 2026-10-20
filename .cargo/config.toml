@@ -3,6 +3,9 @@ incompatible-rust-versions = "fallback"
 
 [alias]
 lint = "clippy --locked --release --workspace --all-targets -- -D warnings"
+# target/reproducible/greenhold-host, with the guest built in Docker and checked against
+# guest-builder/image-id.
+reproducible = "build --locked --profile reproducible -p greenhold-host --features reproducible"
 regtest = "test --locked --release -p greenhold-host --test regtest -- --ignored --nocapture --test-threads=1"
 # Fast debug-build test loop. Built-in `cargo t` cannot be overridden.
 quick = "test --locked --workspace --exclude greenhold-guest"
