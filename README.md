@@ -66,6 +66,22 @@ proves membership only at its tip. Without `--first-height`, X is T. Without
 `--minimum-sats`, M is 1 satoshi. Use `--network signet` or `--network regtest`
 for other networks.
 
+## Privacy
+
+The receipt hides the coin only as well as RISC Zero hides guest inputs.
+[RISC Zero's security model](https://dev.risczero.com/api/security-model) says that
+the zkVM hides all program inputs and witness data, and targets perfect
+zero-knowledge. It also says that RISC Zero has not yet written a mathematical
+proof that the system is zero-knowledge. RISC Zero advises caution for critical
+privacy requirements. Greenhold has the same limit.
+
+Greenhold makes succinct receipts. RISC Zero states that receipts without its
+recursion step leak information about the execution length. Here, the execution
+length depends on the coin. Succinct receipts pass through the recursion step, so
+they do not leak it.
+
+The prover sees all private data, so `prove` runs the prover on your machine.
+
 ## Development
 
 ```sh
