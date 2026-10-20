@@ -8,6 +8,8 @@ use bitcoin::{
     transaction::Version,
 };
 use greenhold_core::claim::Claim;
+use greenhold_guest_builder::GREENHOLD_GUEST_ID;
+use risc0_zkvm::sha::Digest;
 use serde_json::{Value, json};
 
 fn spend(outpoint: OutPoint, values: &[u64], script: &ScriptBuf) -> Transaction {
@@ -134,6 +136,10 @@ fn assert_claim(node: &Node, report: &Value, first: u32, last: u32, minimum: u64
         &[&last.to_string(), "--first-height", &first.to_string()],
     )?)?;
     assert_eq!(claim["context_digest"], fetched["context_digest"]);
+    // The claim came from the guest's journal, so the run must name this guest build.
+    let image_id = Digest::from(GREENHOLD_GUEST_ID).to_string();
+    assert_eq!(report["image_id"], image_id);
+    assert!(report["cycles"].as_u64().context("cycle count")? > 0);
     let encoded = Vec::<u8>::from_hex(report["encoded"].as_str().context("encoded claim")?)?;
     assert_eq!(
         &serde_json::to_value(Claim::try_from(encoded.as_slice())?)?,

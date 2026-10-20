@@ -22,7 +22,7 @@ url = "2"
 webpki-roots = "1"
 greenhold-core.workspace = true
 greenhold-guest-builder.workspace = true
-risc0-zkvm = { workspace = true, features = ["client", "disable-dev-mode"] }
+risc0-zkvm = { workspace = true, features = ["prove", "disable-dev-mode"] }
 
 [dev-dependencies]
 testcontainers = { version = "=0.28.0", features = ["blocking"] }

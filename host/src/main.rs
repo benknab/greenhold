@@ -2,6 +2,7 @@ mod cli;
 mod coin;
 mod connection;
 mod context;
+mod guest;
 
 #[cfg(test)]
 mod test_support;
@@ -9,7 +10,7 @@ mod test_support;
 use anyhow::Result;
 use bitcoin::hex::DisplayHex;
 use clap::Parser;
-use greenhold_core::claim::Claim;
+use greenhold_core::{claim::Claim, input::ClaimInput};
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
@@ -31,14 +32,17 @@ fn run(cli: cli::Cli) -> Result<()> {
                 options.context.last_height,
             )?;
             let rpc = options.context.connections.rpc_config()?;
-            let (context, _coin) =
-                coin::fetch(options.outpoint, input, options.minimum_sats, &rpc)?;
+            let (context, coin) = coin::fetch(options.outpoint, input, options.minimum_sats, &rpc)?;
             let claim = Claim::new(&context, options.minimum_sats);
+            let input = ClaimInput::new(context, coin.witness().clone(), options.minimum_sats);
+            let cycles = guest::execute(&input, &claim)?;
             println!(
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
                     "claim": claim,
                     "encoded": claim.to_bytes().as_hex().to_string(),
+                    "image_id": guest::image_id().to_string(),
+                    "cycles": cycles,
                 }))?
             );
         }

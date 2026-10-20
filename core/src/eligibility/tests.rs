@@ -1,40 +1,10 @@
 use super::*;
 use crate::{
-    coin::Coin,
-    context::{AccumulatorState, BlockEndpoint},
+    context::BlockEndpoint,
+    test_support::{VALUE, coin, proved},
 };
-use bitcoin::{
-    BlockHash, Network, OutPoint, ScriptBuf, TxOut, Txid, blockdata::constants::genesis_block,
-    hashes::Hash,
-};
+use bitcoin::{Network, blockdata::constants::genesis_block};
 use serde_json::json;
-
-const VALUE: u64 = 12_345;
-
-fn coin(creation_height: u32, coinbase: bool) -> Result<Coin> {
-    Coin::new(
-        OutPoint::new(Txid::from_byte_array([1; 32]), 2),
-        BlockHash::from_byte_array([2; 32]),
-        creation_height,
-        coinbase,
-        TxOut {
-            value: Amount::from_sat(VALUE),
-            script_pubkey: ScriptBuf::from_bytes(vec![0x51]),
-        },
-    )
-}
-
-/// A one-leaf forest holding `coin` at the last block T.
-fn proved(coin: Coin, first: u32, last: u32) -> Result<(CoinWitness, ChainContext)> {
-    let header = genesis_block(Network::Regtest).header;
-    let context = ChainContext::new(
-        BlockEndpoint::new(Network::Regtest, first, header)?,
-        BlockEndpoint::new(Network::Regtest, last, header)?,
-        AccumulatorState::new(1, vec![coin.leaf_hash()])?,
-    )?;
-    let witness = CoinWitness::new(coin, context.last().hash(), 0, vec![])?;
-    Ok((witness, context))
-}
 
 fn minimum(sats: u64) -> Result<MinimumAmount> {
     MinimumAmount::try_from(sats)
