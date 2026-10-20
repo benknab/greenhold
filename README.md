@@ -36,11 +36,23 @@ The guest needs only the rzup Rust toolchain. You do not need `r0vm` or a full
 prover. The first build downloads one RISC Zero circuit file and checks its
 SHA-256 hash.
 
+## Utreexod requirements
+
+Configure Utreexod with these flags:
+
+- `--addrindex` enables address transaction searches through `searchrawtransactions`.
+- `--txindex` enables confirmed transaction lookups and supports the address index.
+- `--prune=0` retains historical blocks for transaction retrieval and index construction.
+- `--utreexoproofindex` or `--flatutreexoproofindex` enables Utreexo membership
+  proofs and historical roots for proving and verification.
+
 ## Usage
 
-Warning: the `prove` command sends your outpoint to the Utreexod node. The default
-public node can link that coin to your request. To keep the coin private, use your
-own node with `--utreexod-rpc`, `--utreexod-rpc-user`, and `--utreexod-rpc-password`.
+The default public endpoint lets you test Greenhold without running a Utreexod node.
+
+Warning: the `prove` command sends your outpoint to that node, which can link the
+coin to your request. For privacy, use your own node with `--utreexod-rpc`,
+`--utreexod-rpc-user`, and `--utreexod-rpc-password`.
 
 ```sh
 cargo run --locked --release -- prove <TXID:VOUT> --first-height <X> --minimum-sats <M> --output <FILE>
