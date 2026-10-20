@@ -1,7 +1,9 @@
 use anyhow::{Context as _, Result, bail};
 use greenhold_core::{claim::Claim, input::ClaimInput};
 use greenhold_guest_builder::{GREENHOLD_GUEST_ELF, GREENHOLD_GUEST_ID};
-use risc0_zkvm::{Executor, ExecutorEnv, ExitCode, LocalProver, Prover, Receipt, sha::Digest};
+use risc0_zkvm::{
+    Executor, ExecutorEnv, ExitCode, LocalProver, Prover, ProverOpts, Receipt, sha::Digest,
+};
 
 #[must_use]
 pub fn image_id() -> Digest {
@@ -26,8 +28,9 @@ pub fn execute(input: &ClaimInput, expected: &Claim) -> Result<u64> {
 /// journal must be exactly the claim the host expects.
 pub fn prove(input: &ClaimInput, expected: &Claim) -> Result<Receipt> {
     let env = ExecutorEnv::builder().write(input)?.build()?;
+    // Unlike composite receipts, succinct receipts do not leak the execution length.
     let receipt = LocalProver::new("local")
-        .prove(env, GREENHOLD_GUEST_ELF)
+        .prove_with_opts(env, GREENHOLD_GUEST_ELF, &ProverOpts::succinct())
         .context("guest proving failed")?
         .receipt;
     // Verification requires exit code Halted(0), so a rejected input cannot pass.

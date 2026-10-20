@@ -9,7 +9,7 @@ use bitcoin::{
 };
 use greenhold_core::claim::Claim;
 use greenhold_guest_builder::GREENHOLD_GUEST_ID;
-use risc0_zkvm::{Receipt, sha::Digest};
+use risc0_zkvm::{InnerReceipt, Receipt, sha::Digest};
 use serde_json::{Value, json};
 use std::{fs, time::Duration};
 
@@ -150,6 +150,8 @@ fn assert_receipt(report: &Value, file: &[u8]) -> Result<()> {
         .strip_prefix(b"greenhold/receipt/v1\0")
         .context("receipt tag")?;
     let receipt: Receipt = bincode::deserialize(encoded)?;
+    // Composite receipts leak the execution length, which depends on the coin.
+    assert!(matches!(receipt.inner, InnerReceipt::Succinct(_)));
     receipt.verify(GREENHOLD_GUEST_ID)?;
     let claim = Vec::<u8>::from_hex(report["encoded"].as_str().context("encoded claim")?)?;
     assert_eq!(receipt.journal.bytes, claim);
