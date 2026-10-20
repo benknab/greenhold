@@ -31,6 +31,11 @@ rzup default rust 1.97.0
 
 `rzup default` selects the guest compiler for all projects on your machine.
 
+The guest needs only the rzup Rust toolchain. You do not need `r0vm` or a full
+`rzup install`, because the host binary contains the RISC Zero executor and
+prover. The first build downloads one RISC Zero circuit file and checks its
+SHA-256 hash.
+
 ## Usage
 
 Warning: the `claim` command sends your outpoint to the Utreexod node. The default
@@ -45,12 +50,15 @@ This command builds the host and guest. It then checks one coin and prints the c
 
 1. The node supplies the coin, its Utreexo membership proof, and the chain state.
 2. The host checks that the coin is eligible for the claim.
-3. The host prints the public claim as JSON and as canonical bytes in hex.
+3. The host runs the guest in the zkVM without proving. The guest checks the
+   coin's membership and eligibility again and commits the claim.
+4. The host prints the public claim as JSON and as canonical bytes in hex. It also
+   prints the guest image ID and the cycle count.
 
-The output contains no coin data. T is the node's current tip, because the node
-proves membership only at its tip. Without `--first-height`, X is T. Without
-`--minimum-sats`, M is 1 satoshi. Use `--network signet` or `--network regtest`
-for other networks.
+The command does not make a receipt yet. The output contains no coin data. T is
+the node's current tip, because the node proves membership only at its tip.
+Without `--first-height`, X is T. Without `--minimum-sats`, M is 1 satoshi. Use
+`--network signet` or `--network regtest` for other networks.
 
 ## Development
 
