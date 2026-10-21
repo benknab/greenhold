@@ -74,9 +74,9 @@ pub struct VerifyOptions {
     #[arg(long, value_name = "FILE")]
     pub receipt: PathBuf,
 
-    /// Expected nonce text, hashed exactly as supplied. If omitted, accept any nonce.
-    #[arg(long, value_name = "TEXT", value_parser = nonce_parser())]
-    pub nonce: Option<Nonce>,
+    /// Expected nonce text, hashed exactly as supplied. Defaults to empty text and must match the receipt.
+    #[arg(long, value_name = "TEXT", default_value = "", value_parser = nonce_parser())]
+    pub nonce: Nonce,
 
     /// Bitcoin network the claim must name: bitcoin, signet, or regtest.
     #[arg(long, default_value = "bitcoin")]
@@ -126,8 +126,9 @@ pub struct ProveOptions {
 #[derive(Debug, Args)]
 pub struct ClaimOptions {
     /// Public nonce text, hashed exactly as supplied. Defaults to empty text, without a fresh challenge.
-    #[arg(long, value_name = "TEXT", default_value = "", value_parser = nonce_parser())]
-    pub nonce: Nonce,
+    #[arg(long, value_name = "TEXT", default_value = "",
+        value_parser = clap::builder::StringValueParser::new().map(NonceText::from))]
+    pub nonce: NonceText,
 
     /// Candidate output as TXID:VOUT (zero-based output index).
     #[arg(long)]
@@ -225,6 +226,29 @@ impl Redacted {
 impl std::fmt::Debug for Redacted {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("<redacted>")
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct NonceText {
+    text: String,
+    hash: Nonce,
+}
+
+impl From<String> for NonceText {
+    fn from(text: String) -> Self {
+        let hash = Nonce::from_text(&text);
+        Self { text, hash }
+    }
+}
+
+impl NonceText {
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    pub fn hash(&self) -> Nonce {
+        self.hash
     }
 }
 

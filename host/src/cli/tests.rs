@@ -8,18 +8,20 @@ fn claim_hashes_exact_nonce_text_and_defaults_to_empty() -> Result<()> {
     let Command::Claim(options) = cli(&[])?.command else {
         bail!("expected claim command");
     };
-    assert_eq!(options.nonce, Nonce::from_text(""));
+    assert_eq!(options.nonce.hash(), Nonce::from_text(""));
+    assert_eq!(options.nonce.text(), "");
     for text in ["", "hello", " Challenge café 🔑 ", &"ab".repeat(32)] {
         let Command::Claim(options) = cli(&["--nonce", text])?.command else {
             bail!("expected claim command");
         };
-        assert_eq!(options.nonce, Nonce::from_text(text));
+        assert_eq!(options.nonce.hash(), Nonce::from_text(text));
+        assert_eq!(options.nonce.text(), text);
     }
     Ok(())
 }
 
 #[test]
-fn verify_distinguishes_no_expected_nonce_from_empty_text() -> Result<()> {
+fn verify_hashes_exact_nonce_text_and_defaults_to_empty() -> Result<()> {
     for text in [None, Some(""), Some(" Challenge café 🔑 ")] {
         let mut args = vec!["host", "verify", "--receipt", "claim.receipt"];
         if let Some(text) = text {
@@ -28,7 +30,7 @@ fn verify_distinguishes_no_expected_nonce_from_empty_text() -> Result<()> {
         let Command::Verify(options) = Cli::try_parse_from(args)?.command else {
             bail!("expected verify command");
         };
-        assert_eq!(options.nonce, text.map(Nonce::from_text));
+        assert_eq!(options.nonce, Nonce::from_text(text.unwrap_or_default()));
     }
     Ok(())
 }

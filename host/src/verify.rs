@@ -6,23 +6,28 @@ use greenhold_core::{
 };
 use risc0_zkvm::Receipt;
 
-/// Check the receipt's claim against the network, optional expected nonce, and node state.
+/// Check the receipt's claim against the network, expected nonce, and node state.
 /// The claim's heights are lookup inputs. Its hashes and digest are only compared.
 pub fn claim(
     receipt: &Receipt,
     network: SupportedNetwork,
-    nonce: Option<Nonce>,
+    nonce: Nonce,
     rpc: &utreexod_rpc::Config,
 ) -> Result<Claim> {
     let claim = guest::verify(receipt)?;
+    check_expected(&claim, network, nonce)?;
+    context(&claim, rpc)?;
+    Ok(claim)
+}
+
+fn check_expected(claim: &Claim, network: SupportedNetwork, nonce: Nonce) -> Result<()> {
     if claim.network() != network {
         bail!("receipt claims {}, not {network}", claim.network());
     }
-    if nonce.is_some_and(|expected| claim.nonce() != expected) {
+    if claim.nonce() != nonce {
         bail!("receipt nonce does not match the expected nonce");
     }
-    context(&claim, rpc)?;
-    Ok(claim)
+    Ok(())
 }
 
 /// Rebuild a prepared claim from independently retrieved historical node state.
@@ -41,3 +46,6 @@ pub fn context(
     }
     Ok(context)
 }
+
+#[cfg(test)]
+mod tests;

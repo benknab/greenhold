@@ -96,7 +96,7 @@ fn prepare(options: &cli::ClaimOptions, json: bool) -> Result<()> {
         &coin.witness().coin().output().script_pubkey,
         bitcoin::Network::from(options.context.network),
     )?;
-    let claim = Claim::new(&context, options.minimum_sats, options.nonce);
+    let claim = Claim::new(&context, options.minimum_sats, options.nonce.hash());
     let witness = artifacts::encode_witness(coin.witness())?;
     fs::write(&options.witness, witness).context("cannot write witness")?;
     fs::write(&options.output, artifacts::encode_claim(&claim))
@@ -105,6 +105,7 @@ fn prepare(options: &cli::ClaimOptions, json: bool) -> Result<()> {
     report.claim_file = Some(&options.output);
     report.witness = Some(&options.witness);
     report.address = Some(address);
+    report.nonce_text = Some(options.nonce.text());
     report.print(json)?;
     Ok(())
 }

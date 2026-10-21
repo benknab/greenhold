@@ -33,6 +33,8 @@ pub struct Report<'a> {
     pub receipt_bytes: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cycles: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nonce_text: Option<&'a str>,
 }
 
 impl<'a> Report<'a> {
@@ -48,6 +50,7 @@ impl<'a> Report<'a> {
             receipt: None,
             receipt_bytes: None,
             cycles: None,
+            nonce_text: None,
         }
     }
 
@@ -64,14 +67,19 @@ impl<'a> Report<'a> {
             Status::Inspected => "Proof checked; chain state not checked",
         };
         println!("{heading}\n");
-        println!("Network: {}", self.claim.network());
-        println!(
-            "Minimum amount: {} sats",
-            u64::from(self.claim.minimum_sats())
-        );
-        println!("Unspent since: {}", self.claim.unspent_since());
-        println!("Unspent at: {}", self.claim.unspent_at());
-        println!("Nonce: {}", self.claim.nonce());
+        if !matches!(self.status, Status::Proved) {
+            println!("Network: {}", self.claim.network());
+            println!(
+                "Minimum amount: {} sats",
+                u64::from(self.claim.minimum_sats())
+            );
+            println!("Unspent since: {}", self.claim.unspent_since());
+            println!("Unspent at: {}", self.claim.unspent_at());
+            if let Some(text) = self.nonce_text {
+                println!("Nonce text: {text:?}");
+            }
+            println!("Nonce hash: {}", self.claim.nonce());
+        }
         for (label, path) in [
             ("Claim saved", self.claim_file),
             ("Private witness saved", self.witness),

@@ -112,8 +112,9 @@ fn prepared_claim_survives_signing_delay_and_spending_but_not_a_reorg() -> Resul
         &json!([report["claim"]["unspent_at"]["hash"]]),
     )?;
     node.rpc("generate", &json!([4]))?;
+    let verify_args = ["--receipt", receipt, "--nonce", NONCE];
     rejection(
-        &command(&node, "regtest", "verify", &["--receipt", receipt])?,
+        &command(&node, "regtest", "verify", &verify_args)?,
         "claim does not match the node's chain state",
     );
     rejection(&dry_run()?, "claim does not match the node's chain state");
@@ -187,7 +188,7 @@ fn assert_human_report(output: &std::process::Output, report: &Value) -> Result<
     );
     let text = std::str::from_utf8(&output.stdout)?;
     assert!(text.contains(&format!(
-        "Nonce: {}",
+        "Nonce hash: {}",
         report["claim"]["nonce"].as_str().context("nonce")?
     )));
     assert!(serde_json::from_str::<Value>(text).is_err(), "{text}");
@@ -227,15 +228,10 @@ fn assert_human_dry_run(
 }
 
 fn assert_verified_reports(node: &Node, receipt: &str, expected: &Value) -> Result<()> {
-    let report = success(&command(
-        node,
-        "regtest",
-        "verify",
-        &["--json", "--receipt", receipt],
-    )?)?;
-    assert_public_report(&report, expected);
-    assert_eq!(report["status"], "verified");
-    assert!(report.get("expected_claim_checked").is_none());
+    rejection(
+        &command(node, "regtest", "verify", &["--json", "--receipt", receipt])?,
+        "receipt nonce does not match the expected nonce",
+    );
     let report = success(&command(
         node,
         "regtest",
@@ -244,6 +240,7 @@ fn assert_verified_reports(node: &Node, receipt: &str, expected: &Value) -> Resu
     )?)?;
     assert_public_report(&report, expected);
     assert_eq!(report["status"], "verified");
+    assert!(report.get("expected_claim_checked").is_none());
     for wrong in [
         "",
         NONCE.trim(),
@@ -262,7 +259,12 @@ fn assert_verified_reports(node: &Node, receipt: &str, expected: &Value) -> Resu
     }
     assert_public_report(&success(&inspect(receipt)?)?, expected);
     assert_human_report(
-        &command(node, "regtest", "verify", &["--receipt", receipt])?,
+        &command(
+            node,
+            "regtest",
+            "verify",
+            &["--receipt", receipt, "--nonce", NONCE],
+        )?,
         expected,
     )?;
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_greenhold-host"))
@@ -434,13 +436,23 @@ fn assert_verify_fails_closed(node: &Node, path: &Path) -> Result<()> {
     )?;
     other.rpc("generate", &json!([433]))?;
     rejection(
-        &command(&other, "regtest", "verify", &["--receipt", receipt])?,
+        &command(
+            &other,
+            "regtest",
+            "verify",
+            &["--receipt", receipt, "--nonce", NONCE],
+        )?,
         "claim does not match the node's chain state",
     );
     let unindexed = Node::start(image()?, &["--noutreexo".into()], Some(node))?;
     unindexed.wait_for_block(node, 435)?;
     rejection(
-        &command(&unindexed, "regtest", "verify", &["--receipt", receipt])?,
+        &command(
+            &unindexed,
+            "regtest",
+            "verify",
+            &["--receipt", receipt, "--nonce", NONCE],
+        )?,
         "cannot retrieve Utreexo state",
     );
     Ok(())
