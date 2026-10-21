@@ -165,6 +165,12 @@ fn prove_checks_the_claim_signature_before_node_access() -> Result<()> {
         assert!(output.stdout.is_empty());
         let stderr = String::from_utf8(output.stderr)?;
         assert!(stderr.contains(reason), "{stderr}");
+        assert!(!stderr.contains('\u{1b}'), "{stderr}");
+        if reason == "BIP-322 signature check failed" {
+            assert!(stderr.contains("Checking signature..."), "{stderr}");
+            assert!(!stderr.contains("Checking signature: done"), "{stderr}");
+            assert!(!stderr.contains("Checking chain state"), "{stderr}");
+        }
         if changed.is_some() {
             assert!(!stderr.contains("RPC transport failed"));
         }

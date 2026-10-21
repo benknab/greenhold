@@ -6,6 +6,7 @@ mod context;
 mod discover;
 mod guest;
 mod output;
+mod progress;
 mod receipt;
 mod verify;
 
@@ -115,15 +116,20 @@ fn prove(options: cli::ProveOptions, json: bool) -> Result<()> {
     }
     let witness = artifacts::read_witness(&options.witness)?;
     // Early rejection uses the candidate script; guest membership authenticates it.
-    verify_signature(
-        &witness.coin().output().script_pubkey,
-        &claim.signing_message(),
-        &options.signature,
-    )
-    .context("BIP-322 signature check failed")?;
+    progress::run("Checking signature", || {
+        verify_signature(
+            &witness.coin().output().script_pubkey,
+            &claim.signing_message(),
+            &options.signature,
+        )
+        .context("BIP-322 signature check failed")
+    })?;
     let rpc = options.connections.rpc_config()?;
-    let context = verify::context(&claim, &rpc)?;
-    let coin = EligibleCoin::new(witness, &context, claim.minimum_sats())?;
+    let (context, coin) = progress::run("Checking chain state", || {
+        let context = verify::context(&claim, &rpc)?;
+        let coin = EligibleCoin::new(witness, &context, claim.minimum_sats())?;
+        Ok((context, coin))
+    })?;
     let input = ClaimInput::new(
         context,
         coin.witness().clone(),
@@ -132,15 +138,19 @@ fn prove(options: cli::ProveOptions, json: bool) -> Result<()> {
         options.signature,
     );
     // Execution is fast, so a rejected input fails before the slow proving step.
-    let cycles = guest::execute(&input, &claim)?;
+    let cycles = progress::run("Executing guest", || guest::execute(&input, &claim))?;
     let mut report = Report::new(&claim, Status::Executed);
     if let Some(path) = &options.output {
-        let bytes = receipt::encode(&guest::prove(&input, &claim)?)?;
-        fs::write(path, &bytes)
-            .with_context(|| format!("cannot write receipt to {}", path.display()))?;
+        let receipt = guest::prove(&input, &claim)?;
+        let size = progress::run("Saving receipt", || {
+            let bytes = receipt::encode(&receipt)?;
+            fs::write(path, &bytes)
+                .with_context(|| format!("cannot write receipt to {}", path.display()))?;
+            Ok(bytes.len())
+        })?;
         report = Report::new(&claim, Status::Proved);
         report.receipt = Some(path);
-        report.receipt_bytes = Some(bytes.len());
+        report.receipt_bytes = Some(size);
     } else {
         // The cycle count depends on the private coin. Only a dry run, which makes
         // no receipt to share, reports it.
