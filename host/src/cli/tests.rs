@@ -3,6 +3,19 @@ use bitcoin::Network;
 
 const OUTPOINT: &str = "1111111111111111111111111111111111111111111111111111111111111111:0";
 
+#[test]
+fn claim_accepts_only_fixed_length_hex_nonces() -> Result<()> {
+    let nonce = "ab".repeat(32);
+    let Command::Claim(options) = cli(&["--nonce", &nonce])?.command else {
+        bail!("expected claim command");
+    };
+    assert_eq!(options.nonce.to_string(), nonce);
+    for invalid in ["", "hello", &"ab".repeat(31), &"ab".repeat(33)] {
+        assert!(cli(&["--nonce", invalid]).is_err());
+    }
+    Ok(())
+}
+
 /// Parsing checks only the signature encoding, not the signature.
 const SIGNED: [&str; 4] = [
     "--witness",

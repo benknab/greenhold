@@ -102,7 +102,7 @@ fn prepare(options: &cli::ClaimOptions, json: bool) -> Result<()> {
         &coin.witness().coin().output().script_pubkey,
         bitcoin::Network::from(options.context.network),
     )?;
-    let claim = Claim::new(&context, options.minimum_sats);
+    let claim = Claim::new(&context, options.minimum_sats, options.nonce);
     let witness = artifacts::encode_witness(coin.witness())?;
     fs::write(&options.witness, witness).context("cannot write witness")?;
     fs::write(&options.output, artifacts::encode_claim(&claim))
@@ -135,6 +135,7 @@ fn prove(options: cli::ProveOptions, json: bool) -> Result<()> {
         context,
         coin.witness().clone(),
         claim.minimum_sats(),
+        claim.nonce(),
         options.signature,
     );
     // Execution is fast, so a rejected input fails before the slow proving step.

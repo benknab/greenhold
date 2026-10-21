@@ -19,6 +19,7 @@ fn claim_and_prove_explain_the_prepared_signing_flow() -> Result<()> {
                 "--first-height <HEIGHT>",
                 "tip-only",
                 "--minimum-sats <SATS>",
+                "--nonce <HEX>",
                 "--witness <FILE>",
                 "--output <FILE>",
             ],
@@ -45,6 +46,26 @@ fn claim_and_prove_explain_the_prepared_signing_flow() -> Result<()> {
             assert!(help.contains(text), "{help}");
         }
     }
+    Ok(())
+}
+
+#[test]
+fn prove_rejects_a_separate_nonce_option() -> Result<()> {
+    let output = Command::new(env!("CARGO_BIN_EXE_greenhold-host"))
+        .args(["prove", "--claim", "coin.claim"])
+        .args([
+            "--nonce",
+            &"cd".repeat(32),
+            "--witness",
+            "missing.witness",
+            "--signature",
+            "smpAA==",
+            "--dry-run",
+        ])
+        .output()?;
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8(output.stderr)?.contains("unexpected argument '--nonce'"));
     Ok(())
 }
 
@@ -91,25 +112,31 @@ fn prove_checks_the_claim_signature_before_node_access() -> Result<()> {
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("signature"))?;
     for (changed, signature, network, reason) in [
-        (false, signature, "regtest", "RPC transport failed"),
-        (true, signature, "regtest", "BIP-322 signature check failed"),
+        (None, signature, "regtest", "RPC transport failed"),
         (
-            false,
-            "smpAA==",
+            Some(123),
+            signature,
             "regtest",
             "BIP-322 signature check failed",
         ),
         (
-            false,
+            Some(163),
+            signature,
+            "regtest",
+            "BIP-322 signature check failed",
+        ),
+        (None, "smpAA==", "regtest", "BIP-322 signature check failed"),
+        (
+            None,
             signature,
             "bitcoin",
             "claim names regtest, not bitcoin",
         ),
     ] {
         let mut bytes = claim.to_bytes();
-        if changed {
-            bytes[123] ^= 1;
-        } // A different valid M.
+        if let Some(offset) = changed {
+            bytes[offset] ^= 1;
+        } // Change only M or the nonce, preserving a valid claim format.
         fs::write(&claim_path, bytes)?;
         let output = Command::new(env!("CARGO_BIN_EXE_greenhold-host"))
             .arg("prove")
@@ -135,7 +162,7 @@ fn prove_checks_the_claim_signature_before_node_access() -> Result<()> {
         assert!(output.stdout.is_empty());
         let stderr = String::from_utf8(output.stderr)?;
         assert!(stderr.contains(reason), "{stderr}");
-        if changed {
+        if changed.is_some() {
             assert!(!stderr.contains("RPC transport failed"));
         }
     }
@@ -163,16 +190,16 @@ fn artifacts_reject_invalid_versions_trailing_bytes_and_oversize_files() -> Resu
         assert!(artifacts::read_witness(&path).is_err());
     }
     let encoded = artifacts::encode_claim(&claim);
-    assert_eq!(encoded.len(), 163);
+    assert_eq!(encoded.len(), 195);
     assert_eq!(encoded, claim.to_bytes());
     fs::write(&path, &encoded)?;
     assert_eq!(artifacts::read_claim(&path)?, claim);
     for bytes in [
-        claim.to_bytes()[..162].to_vec(),
+        claim.to_bytes()[..194].to_vec(),
         [claim.to_bytes(), vec![0]].concat(),
         [claim.to_bytes(), vec![0; 32]].concat(),
-        vec![0; 163],
-        b"greenhold/claim/v2\0".to_vec(),
+        vec![0; 195],
+        b"greenhold/claim/v1\0".to_vec(),
         serde_json::to_vec(&claim)?,
     ] {
         fs::write(&path, bytes)?;
@@ -188,11 +215,11 @@ fn prove_rejects_malformed_claim_files_before_witness_or_node_access() -> Result
     for (contents, reason) in [
         (None, "cannot read claim"),
         (
-            Some(b"greenhold/claim/v2\0".as_slice()),
+            Some(b"greenhold/claim/v1\0".as_slice()),
             "claim tag or version is not supported",
         ),
         (
-            Some(b"greenhold/claim/v1\0".as_slice()),
+            Some(b"greenhold/claim/v2\0".as_slice()),
             "claim is truncated",
         ),
     ] {

@@ -30,6 +30,7 @@ fn claim() -> Result<Claim> {
     Ok(Claim::new(
         &context(10, 20)?,
         MinimumAmount::try_from(12_345)?,
+        Nonce([0xab; 32]),
     ))
 }
 
@@ -39,7 +40,7 @@ fn claim_bytes_and_json_follow_the_documented_layout() -> Result<()> {
     let claim = claim()?;
     let first = header(Network::Regtest).block_hash();
     let last = header(Network::Bitcoin).block_hash();
-    let mut expected = b"greenhold/claim/v1\0".to_vec();
+    let mut expected = b"greenhold/claim/v2\0".to_vec();
     expected.extend(genesis_block(Network::Regtest).block_hash().to_byte_array());
     expected.extend(10u32.to_le_bytes());
     expected.extend(first.to_byte_array());
@@ -47,6 +48,7 @@ fn claim_bytes_and_json_follow_the_documented_layout() -> Result<()> {
     expected.extend(last.to_byte_array());
     expected.extend(12_345u64.to_le_bytes());
     expected.extend(digest.to_byte_array());
+    expected.extend([0xab; 32]);
     assert_eq!(claim.to_bytes(), expected);
     let parsed = Claim::try_from(expected.as_slice())?;
     assert_eq!(parsed, claim);
@@ -55,6 +57,7 @@ fn claim_bytes_and_json_follow_the_documented_layout() -> Result<()> {
     let rebuilt = Claim::new(
         &context(parsed.first_height(), parsed.last_height())?,
         parsed.minimum_sats(),
+        parsed.nonce(),
     );
     assert_eq!(rebuilt, parsed);
     assert_eq!(
@@ -65,11 +68,16 @@ fn claim_bytes_and_json_follow_the_documented_layout() -> Result<()> {
             "last": {"height": 20, "hash": last},
             "minimum_sats": 12_345,
             "context_digest": digest,
+            "nonce": "ab".repeat(32),
         })
     );
 
     // X = T is one block, named twice.
-    let single = Claim::new(&context(20, 20)?, MinimumAmount::try_from(1)?);
+    let single = Claim::new(
+        &context(20, 20)?,
+        MinimumAmount::try_from(1)?,
+        Nonce::default(),
+    );
     assert_eq!(Claim::try_from(single.to_bytes().as_slice())?, single);
     Ok(())
 }
@@ -87,7 +95,7 @@ fn claim_parsing_rejects_malformed_bytes() -> Result<()> {
     let testnet = genesis_block(Network::Testnet).block_hash().to_byte_array();
     let over_limit = (Amount::MAX_MONEY.to_sat() + 1).to_le_bytes();
     for (invalid, reason) in [
-        (changed(NETWORK - 2, b"2"), "tag or version"),
+        (changed(NETWORK - 2, b"1"), "tag or version"),
         (bytes[..bytes.len() - 1].to_vec(), "truncated"),
         (trailing, "trailing bytes"),
         (changed(NETWORK, &testnet), "not a supported network"),
@@ -113,11 +121,15 @@ fn signing_message_matches_independent_vector_and_binds_every_field() -> Result<
         endpoint,
         AccumulatorState::new(3, vec![[0x11; 32], [0x22; 32]])?,
     )?;
-    let claim = Claim::new(&context, MinimumAmount::try_from(12_345)?);
-    assert_eq!(claim.to_bytes().len(), 163);
+    let claim = Claim::new(
+        &context,
+        MinimumAmount::try_from(12_345)?,
+        Nonce([0xab; 32]),
+    );
+    assert_eq!(claim.to_bytes().len(), 195);
     assert_eq!(
         claim.signing_message(),
-        "greenhold/claim:08897142df4b6e679e53cd3b01b0eed9a2f3e01d0fbdf83f353bf52a716d4523"
+        "greenhold/claim:a2a1e054b839676de37c07893c6b0625ab170e5aeed5799762e21f26a2a06fed"
     );
     let original = self::claim()?;
     let bytes = original.to_bytes();
@@ -129,6 +141,7 @@ fn signing_message_matches_independent_vector_and_binds_every_field() -> Result<
         LAST + 4,
         MINIMUM,
         MINIMUM + 8,
+        MINIMUM + 8 + 32,
     ] {
         let mut changed = bytes.clone();
         if offset == NETWORK {
@@ -143,5 +156,21 @@ fn signing_message_matches_independent_vector_and_binds_every_field() -> Result<
     let mut old_format = bytes;
     old_format.extend([0; 32]);
     assert!(Claim::try_from(old_format.as_slice()).is_err());
+    Ok(())
+}
+
+#[test]
+fn nonce_parsing_requires_exactly_32_hex_bytes() -> Result<()> {
+    let nonce: Nonce = "AB".repeat(32).parse()?;
+    assert_eq!(nonce.to_string(), "ab".repeat(32));
+    for text in [
+        String::new(),
+        "a".repeat(63),
+        "a".repeat(65),
+        "gg".repeat(32),
+    ] {
+        assert!(text.parse::<Nonce>().is_err());
+        assert!(serde_json::from_value::<Nonce>(json!(text)).is_err());
+    }
     Ok(())
 }

@@ -33,7 +33,7 @@ pub fn context(
         Some(claim.last_height()),
     )?;
     let context = context::fetch(input, rpc)?;
-    if Claim::new(&context, claim.minimum_sats()) != *claim {
+    if Claim::new(&context, claim.minimum_sats(), claim.nonce()) != *claim {
         bail!("claim does not match the node's chain state");
     }
     Ok(context)

@@ -42,8 +42,9 @@ fn guest_rejects_changed_claims_and_witnesses_without_host_checks() -> Result<()
     for (pointer, value) in [
         ("/minimum", json!(fixture::VALUE - 1)), // Still eligible: must fail signature binding.
         ("/minimum", json!(fixture::VALUE + 1)),
+        ("/nonce", json!("cd".repeat(32))), // Still eligible: only the signed challenge changes.
         ("/context/first/height", json!(11)), // Still eligible, different X.
-        ("/context/last/height", json!(21)),  // Still eligible, different T.
+        ("/context/last/height", json!(21)), // Still eligible, different T.
         ("/context/state/roots", json!(vec![[0; 32]])),
         ("/witness/proved_at", json!("00".repeat(32))),
         ("/signature", json!("smpAA==")),

@@ -22,11 +22,12 @@ fn input(script: ScriptType, format: Format) -> Result<ClaimInput> {
     )?;
     let (witness, context) = proved(coin, 10, 20)?;
     let minimum = MinimumAmount::try_from(VALUE)?;
-    let message = Claim::new(&context, minimum).signing_message();
+    let nonce = "ab".repeat(32).parse()?;
+    let message = Claim::new(&context, minimum, nonce).signing_message();
     let signature = sign(script, format, &key, Network::Regtest, &message)?
         .signature
         .parse()?;
-    Ok(ClaimInput::new(context, witness, minimum, signature))
+    Ok(ClaimInput::new(context, witness, minimum, nonce, signature))
 }
 
 #[test]
@@ -34,13 +35,17 @@ fn input_requires_eligibility_and_a_signature_over_the_exact_claim() -> Result<(
     let original = input(ScriptType::P2wpkh, Format::Simple)?;
     assert_eq!(
         original.clone().check()?,
-        Claim::new(&original.context, original.minimum)
+        Claim::new(&original.context, original.minimum, original.nonce)
     );
     for minimum in [VALUE - 1, VALUE + 1] {
         let mut changed = original.clone();
         changed.minimum = MinimumAmount::try_from(minimum)?;
         assert!(changed.check().is_err());
     }
+    let mut changed = original;
+    changed.nonce = "cd".repeat(32).parse()?;
+    let error = changed.check().expect_err("signature must bind the nonce");
+    assert!(error.to_string().contains("signature"), "{error:#}");
     Ok(())
 }
 
@@ -56,7 +61,10 @@ fn private_inputs_verify_every_format_after_serialization() -> Result<()> {
             let input = input(script, format)?;
             let encoded = serde_json::to_value(&input)?;
             let decoded: ClaimInput = serde_json::from_value(encoded.clone())?;
-            assert_eq!(decoded.check()?, Claim::new(&input.context, input.minimum));
+            assert_eq!(
+                decoded.check()?,
+                Claim::new(&input.context, input.minimum, input.nonce)
+            );
             for replacement in ["", "not base64", "pofAAAA"] {
                 let mut invalid = encoded.clone();
                 invalid["signature"] = replacement.into();

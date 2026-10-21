@@ -74,6 +74,7 @@ impl<'a> Report<'a> {
         );
         println!("First height: {}", self.claim.first_height());
         println!("Last height: {}", self.claim.last_height());
+        println!("Nonce: {}", self.claim.nonce());
         for (label, path) in [
             ("Claim saved", self.claim_file),
             ("Private witness saved", self.witness),

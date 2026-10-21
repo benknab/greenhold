@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 use std::{fs, path::Path, time::Duration};
 
 const TAG: &[u8] = b"greenhold/receipt/v1\0";
+const NONCE: &str = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
 
 #[test]
 #[ignore = "requires Docker; runs Utreexod nodes"]
@@ -31,6 +32,8 @@ fn prepared_claim_survives_signing_delay_and_spending_but_not_a_reorg() -> Resul
         "claim",
         &[
             "--json",
+            "--nonce",
+            NONCE,
             "--output",
             claim,
             "--outpoint",
@@ -45,6 +48,7 @@ fn prepared_claim_survives_signing_delay_and_spending_but_not_a_reorg() -> Resul
     )?)?;
     assert_claim(&node, &report, 433, 433, 2_000_000_000)?;
     assert_claim_file(&claim_path, &report)?;
+    assert_eq!(report["claim"]["nonce"], NONCE);
     assert_preparation_rejects_ineligible(&node, &address, &funding, directory.path())?;
 
     // Sign after advancing the tip. No fresh proof for the frozen T can be fetched.
@@ -171,6 +175,10 @@ fn assert_human_report(output: &std::process::Output, report: &Value) -> Result<
         String::from_utf8_lossy(&output.stderr)
     );
     let text = std::str::from_utf8(&output.stdout)?;
+    assert!(text.contains(&format!(
+        "Nonce: {}",
+        report["claim"]["nonce"].as_str().context("nonce")?
+    )));
     assert!(serde_json::from_str::<Value>(text).is_err(), "{text}");
     assert!(text.contains("regtest"), "{text}");
     for (label, value) in [
@@ -243,8 +251,8 @@ fn assert_public_report(actual: &Value, expected: &Value) {
 
 fn assert_claim_file(path: &Path, report: &Value) -> Result<()> {
     let bytes = fs::read(path)?;
-    assert_eq!(bytes.len(), 163);
-    assert!(bytes.starts_with(b"greenhold/claim/v1\0"));
+    assert_eq!(bytes.len(), 195);
+    assert!(bytes.starts_with(b"greenhold/claim/v2\0"));
     let claim = Claim::try_from(bytes.as_slice())?;
     assert_eq!(serde_json::to_value(&claim)?, report["claim"]);
     assert_eq!(claim.signing_message(), report["message"]);
@@ -341,29 +349,35 @@ fn funded_node() -> Result<(Node, Address, Transaction)> {
 
 fn assert_verify_fails_closed(node: &Node, path: &Path, claim: &str) -> Result<()> {
     let receipt = path.to_str().context("receipt path")?;
-    // A real proof for C must not satisfy even a weaker but otherwise valid C-prime.
-    let mut changed = fs::read(claim)?;
-    changed[123..131].copy_from_slice(&1_u64.to_le_bytes());
     let expected = path.with_file_name("different.claim");
-    fs::write(&expected, changed)?;
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_greenhold-host"))
-        .args([
-            "verify",
-            "--receipt",
-            receipt,
-            "--claim",
-            expected.to_str().context("expected claim path")?,
-            "--network",
-            "regtest",
-            "--utreexod-rpc",
-            "http://127.0.0.1:9/",
-            "--utreexod-rpc-user",
-            "test",
-            "--utreexod-rpc-password",
-            "test",
-        ])
-        .output()?;
-    rejection(&output, "receipt does not match the expected claim");
+    // A real proof cannot satisfy a weaker minimum or a different nonce.
+    for offset in [123, 163] {
+        let mut changed = fs::read(claim)?;
+        if offset == 123 {
+            changed[123..131].copy_from_slice(&1_u64.to_le_bytes());
+        } else {
+            changed[offset] ^= 1;
+        }
+        fs::write(&expected, changed)?;
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_greenhold-host"))
+            .args([
+                "verify",
+                "--receipt",
+                receipt,
+                "--claim",
+                expected.to_str().context("expected claim path")?,
+                "--network",
+                "regtest",
+                "--utreexod-rpc",
+                "http://127.0.0.1:9/",
+                "--utreexod-rpc-user",
+                "test",
+                "--utreexod-rpc-password",
+                "test",
+            ])
+            .output()?;
+        rejection(&output, "receipt does not match the expected claim");
+    }
     rejection(
         &command(
             node,

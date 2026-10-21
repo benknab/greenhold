@@ -35,7 +35,8 @@ pub fn signed(script: ScriptType, format: Format) -> Result<(ClaimInput, Claim)>
     )?;
     let witness = CoinWitness::new(coin, context.last().hash(), 0, vec![])?;
     let minimum = MinimumAmount::try_from(VALUE)?;
-    let claim = Claim::new(&context, minimum);
+    let nonce = "ab".repeat(32).parse()?;
+    let claim = Claim::new(&context, minimum, nonce);
     let signature = sign(
         script,
         format,
@@ -45,5 +46,8 @@ pub fn signed(script: ScriptType, format: Format) -> Result<(ClaimInput, Claim)>
     )?
     .signature
     .parse()?;
-    Ok((ClaimInput::new(context, witness, minimum, signature), claim))
+    Ok((
+        ClaimInput::new(context, witness, minimum, nonce, signature),
+        claim,
+    ))
 }

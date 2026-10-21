@@ -10,11 +10,49 @@ use bitcoin::{
     BlockHash, Network,
     blockdata::constants::genesis_block,
     hashes::{Hash, sha256},
+    hex::{DisplayHex as _, FromHex as _},
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::{fmt, str::FromStr};
 
 /// Domain and format version of the canonical claim bytes.
-const TAG: &[u8] = b"greenhold/claim/v1\0";
+const TAG: &[u8] = b"greenhold/claim/v2\0";
+
+/// Public challenge bytes, encoded as exactly 64 hexadecimal characters.
+/// The zero default does not provide a fresh challenge.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub struct Nonce([u8; 32]);
+
+impl FromStr for Nonce {
+    type Err = anyhow::Error;
+
+    fn from_str(text: &str) -> Result<Self> {
+        Ok(Self(<[u8; 32]>::from_hex(text).context(
+            "nonce must contain exactly 64 hexadecimal characters",
+        )?))
+    }
+}
+
+impl TryFrom<String> for Nonce {
+    type Error = anyhow::Error;
+
+    fn try_from(text: String) -> Result<Self> {
+        text.parse()
+    }
+}
+
+impl From<Nonce> for String {
+    fn from(nonce: Nonce) -> Self {
+        nonce.to_string()
+    }
+}
+
+impl fmt::Display for Nonce {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0.as_hex())
+    }
+}
 
 /// A block named by height and hash.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -34,11 +72,12 @@ pub struct Claim {
     last: BlockRef,
     minimum_sats: MinimumAmount,
     context_digest: sha256::Hash,
+    nonce: Nonce,
 }
 
 impl Claim {
     #[must_use]
-    pub fn new(context: &ChainContext, minimum: MinimumAmount) -> Self {
+    pub fn new(context: &ChainContext, minimum: MinimumAmount, nonce: Nonce) -> Self {
         let block = |endpoint: &BlockEndpoint| BlockRef {
             height: endpoint.height(),
             hash: endpoint.hash(),
@@ -49,6 +88,7 @@ impl Claim {
             last: block(context.last()),
             minimum_sats: minimum,
             context_digest: context.digest(),
+            nonce,
         }
     }
 
@@ -74,6 +114,11 @@ impl Claim {
         self.minimum_sats
     }
 
+    #[must_use]
+    pub fn nonce(&self) -> Nonce {
+        self.nonce
+    }
+
     /// The exact 80-byte ASCII message to sign: a domain prefix and the lowercase
     /// SHA-256 hex digest of the canonical claim, without a newline or terminator.
     #[must_use]
@@ -82,7 +127,8 @@ impl Claim {
     }
 
     /// Fixed-length canonical bytes: the tag, the network's genesis hash, then for
-    /// X and T a LE u32 height and 32-byte block hash, LE u64 M, and the context digest.
+    /// X and T a LE u32 height and 32-byte block hash, LE u64 M, the context digest,
+    /// and the 32-byte nonce.
     /// Hashes use internal byte order, not reversed display order.
     #[must_use]
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -95,6 +141,7 @@ impl Claim {
         }
         bytes.extend_from_slice(&u64::from(self.minimum_sats).to_le_bytes());
         bytes.extend_from_slice(self.context_digest.as_byte_array());
+        bytes.extend_from_slice(&self.nonce.0);
         bytes
     }
 }
@@ -120,6 +167,7 @@ impl TryFrom<&[u8]> for Claim {
         let last = block()?;
         let minimum_sats = MinimumAmount::try_from(u64::from_le_bytes(reader.take()?))?;
         let context_digest = sha256::Hash::from_byte_array(reader.take()?);
+        let nonce = Nonce(reader.take()?);
         if !reader.0.is_empty() {
             bail!("claim has trailing bytes");
         }
@@ -130,6 +178,7 @@ impl TryFrom<&[u8]> for Claim {
             last,
             minimum_sats,
             context_digest,
+            nonce,
         })
     }
 }

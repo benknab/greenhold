@@ -2,7 +2,7 @@ use crate::connection::{electrum, utreexod_rpc};
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand};
 use greenhold_core::{
-    eligibility::MinimumAmount, network::SupportedNetwork, verification::Signature,
+    claim::Nonce, eligibility::MinimumAmount, network::SupportedNetwork, verification::Signature,
 };
 use std::path::PathBuf;
 use url::Url;
@@ -125,6 +125,10 @@ pub struct ProveOptions {
 
 #[derive(Debug, Args)]
 pub struct ClaimOptions {
+    /// Public nonce: 64 hex characters. Defaults to zero, without a fresh challenge.
+    #[arg(long, value_name = "HEX", default_value_t = Nonce::default())]
+    pub nonce: Nonce,
+
     /// Candidate output as TXID:VOUT (zero-based output index).
     #[arg(long)]
     pub outpoint: bitcoin::OutPoint,

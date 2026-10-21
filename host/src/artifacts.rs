@@ -6,7 +6,7 @@ use greenhold_core::{claim::Claim, coin::CoinWitness};
 use std::{fs::File, io::Read as _, path::Path};
 
 // Canonical claim bytes include the domain and version tag.
-const CLAIM_BYTES: u64 = 163;
+const CLAIM_BYTES: u64 = 195;
 const WITNESS_TAG: &[u8] = b"greenhold/witness/v1\0";
 // A bounded coin script (10 KB), at most 61 sibling hashes, and fixed coin fields.
 const MAX_WITNESS_BYTES: u64 = 16 * 1024;
