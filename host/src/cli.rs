@@ -74,10 +74,6 @@ pub struct VerifyOptions {
     #[arg(long, value_name = "FILE")]
     pub receipt: PathBuf,
 
-    /// Optional independently expected claim file. Requires an exact match.
-    #[arg(long, value_name = "FILE")]
-    pub claim: Option<PathBuf>,
-
     /// Bitcoin network the claim must name: bitcoin, signet, or regtest.
     #[arg(long, default_value = "bitcoin")]
     pub network: SupportedNetwork,

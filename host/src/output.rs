@@ -33,8 +33,6 @@ pub struct Report<'a> {
     pub receipt_bytes: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cycles: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub expected_claim_checked: Option<bool>,
 }
 
 impl<'a> Report<'a> {
@@ -50,7 +48,6 @@ impl<'a> Report<'a> {
             receipt: None,
             receipt_bytes: None,
             cycles: None,
-            expected_claim_checked: None,
         }
     }
 
@@ -64,7 +61,7 @@ impl<'a> Report<'a> {
             Status::Executed => "Dry run completed",
             Status::Proved => "Receipt created",
             Status::Verified => "Proof and chain state verified",
-            Status::Inspected => "Proof checked; chain state and expected claim not checked",
+            Status::Inspected => "Proof checked; chain state not checked",
         };
         println!("{heading}\n");
         println!("Network: {}", self.claim.network());
@@ -89,9 +86,6 @@ impl<'a> Report<'a> {
         }
         if let Some(cycles) = self.cycles {
             println!("Cycles: {cycles}");
-        }
-        if self.expected_claim_checked == Some(true) {
-            println!("Expected claim: matched");
         }
         if let Some(address) = &self.address {
             println!(

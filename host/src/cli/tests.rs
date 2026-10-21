@@ -213,26 +213,24 @@ fn prove_needs_a_witness_and_well_formed_signature() -> Result<()> {
 }
 
 #[test]
-fn verify_accepts_an_optional_expected_claim_file() -> Result<()> {
+fn verify_uses_a_receipt_without_a_claim_file() -> Result<()> {
     let Command::Verify(options) =
         Cli::try_parse_from(["host", "verify", "--receipt", "claim.receipt"])?.command
     else {
         bail!("expected verify command");
     };
-    assert_eq!(options.claim, None);
-    let Command::Verify(options) = Cli::try_parse_from([
+    assert_eq!(options.receipt, PathBuf::from("claim.receipt"));
+    let error = Cli::try_parse_from([
         "host",
         "verify",
         "--receipt",
         "claim.receipt",
         "--claim",
         "coin.claim",
-    ])?
-    .command
-    else {
-        bail!("expected verify command");
-    };
-    assert_eq!(options.claim, Some(PathBuf::from("coin.claim")));
+    ])
+    .err()
+    .context("removed claim flag accepted")?;
+    assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument);
     Ok(())
 }
 

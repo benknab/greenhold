@@ -63,21 +63,14 @@ fn run(cli: cli::Cli) -> Result<()> {
         cli::Command::Prove(options) => prove(options, cli.json)?,
         cli::Command::Verify(options) => {
             let receipt = receipt::read(&options.receipt)?;
-            let expected = options
-                .claim
-                .as_deref()
-                .map(artifacts::read_claim)
-                .transpose()?;
             let rpc = options.connections.rpc_config()?;
-            let claim = verify::claim(&receipt, options.network, expected.as_ref(), &rpc)?;
-            let mut report = Report::new(&claim, Status::Verified);
-            report.expected_claim_checked = Some(expected.is_some());
-            report.print(cli.json)?;
+            let claim = verify::claim(&receipt, options.network, &rpc)?;
+            Report::new(&claim, Status::Verified).print(cli.json)?;
         }
         cli::Command::Inspect(options) => {
             let claim = guest::verify(&receipt::read(&options.receipt)?)?;
             eprintln!(
-                "Proof checked. Expected claim and chain state not checked: use verify to accept the claim."
+                "Proof checked. Chain state not checked: use verify to check the claim against the node."
             );
             Report::new(&claim, Status::Inspected).print(cli.json)?;
         }

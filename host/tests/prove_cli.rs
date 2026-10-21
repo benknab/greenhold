@@ -33,7 +33,7 @@ fn claim_and_prove_explain_the_prepared_signing_flow() -> Result<()> {
                 "--dry-run",
             ],
         ),
-        ("verify", vec!["--receipt <FILE>", "--claim <FILE>"]),
+        ("verify", vec!["--receipt <FILE>"]),
         ("inspect", vec!["--receipt <FILE>"]),
     ] {
         let output = Command::new(binary).args([command, "--help"]).output()?;
@@ -42,6 +42,9 @@ fn claim_and_prove_explain_the_prepared_signing_flow() -> Result<()> {
         assert!(help.contains("--json"), "{help}");
         assert!(!help.contains("--last-height"), "{help}");
         assert!(!help.contains("--claim-file"), "{help}");
+        if command == "verify" {
+            assert!(!help.contains("--claim"), "{help}");
+        }
         for text in required {
             assert!(help.contains(text), "{help}");
         }

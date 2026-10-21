@@ -96,8 +96,8 @@ fn prepared_claim_survives_signing_delay_and_spending_but_not_a_reorg() -> Resul
     assert!(proved.get("cycles").is_none());
     let accepted = json!({"claim": report["claim"],
         "message": report["message"], "image_id": report["image_id"]});
-    assert_verified_reports(&node, receipt, claim, &accepted)?;
-    assert_verify_fails_closed(&node, &receipt_path, claim)?;
+    assert_verified_reports(&node, receipt, &accepted)?;
+    assert_verify_fails_closed(&node, &receipt_path)?;
 
     // A completed reorg across T invalidates chain acceptance, not the proof seal.
     node.rpc("invalidateblock", &json!([report["claim"]["last"]["hash"]]))?;
@@ -215,22 +215,16 @@ fn assert_human_dry_run(
     assert_human_report(&output, report)
 }
 
-fn assert_verified_reports(
-    node: &Node,
-    receipt: &str,
-    claim: &str,
-    expected: &Value,
-) -> Result<()> {
-    for extra in [vec!["--claim", claim], vec![]] {
-        let report = success(&command(
-            node,
-            "regtest",
-            "verify",
-            &[&["--json", "--receipt", receipt], extra.as_slice()].concat(),
-        )?)?;
-        assert_public_report(&report, expected);
-        assert_eq!(report["expected_claim_checked"], !extra.is_empty());
-    }
+fn assert_verified_reports(node: &Node, receipt: &str, expected: &Value) -> Result<()> {
+    let report = success(&command(
+        node,
+        "regtest",
+        "verify",
+        &["--json", "--receipt", receipt],
+    )?)?;
+    assert_public_report(&report, expected);
+    assert_eq!(report["status"], "verified");
+    assert!(report.get("expected_claim_checked").is_none());
     assert_public_report(&success(&inspect(receipt)?)?, expected);
     assert_human_report(
         &command(node, "regtest", "verify", &["--receipt", receipt])?,
@@ -347,44 +341,10 @@ fn funded_node() -> Result<(Node, Address, Transaction)> {
     Ok((node, address, funding))
 }
 
-fn assert_verify_fails_closed(node: &Node, path: &Path, claim: &str) -> Result<()> {
+fn assert_verify_fails_closed(node: &Node, path: &Path) -> Result<()> {
     let receipt = path.to_str().context("receipt path")?;
-    let expected = path.with_file_name("different.claim");
-    // A real proof cannot satisfy a weaker minimum or a different nonce.
-    for offset in [123, 163] {
-        let mut changed = fs::read(claim)?;
-        if offset == 123 {
-            changed[123..131].copy_from_slice(&1_u64.to_le_bytes());
-        } else {
-            changed[offset] ^= 1;
-        }
-        fs::write(&expected, changed)?;
-        let output = std::process::Command::new(env!("CARGO_BIN_EXE_greenhold-host"))
-            .args([
-                "verify",
-                "--receipt",
-                receipt,
-                "--claim",
-                expected.to_str().context("expected claim path")?,
-                "--network",
-                "regtest",
-                "--utreexod-rpc",
-                "http://127.0.0.1:9/",
-                "--utreexod-rpc-user",
-                "test",
-                "--utreexod-rpc-password",
-                "test",
-            ])
-            .output()?;
-        rejection(&output, "receipt does not match the expected claim");
-    }
     rejection(
-        &command(
-            node,
-            "bitcoin",
-            "verify",
-            &["--receipt", receipt, "--claim", claim],
-        )?,
+        &command(node, "bitcoin", "verify", &["--receipt", receipt])?,
         "receipt claims regtest, not bitcoin",
     );
     let mut tampered: Receipt = bincode::deserialize(&fs::read(path)?[TAG.len()..])?;
@@ -395,12 +355,7 @@ fn assert_verify_fails_closed(node: &Node, path: &Path, claim: &str) -> Result<(
     fs::write(&tampered_path, file)?;
     let tampered = tampered_path.to_str().context("receipt path")?;
     rejection(
-        &command(
-            node,
-            "regtest",
-            "verify",
-            &["--receipt", tampered, "--claim", claim],
-        )?,
+        &command(node, "regtest", "verify", &["--receipt", tampered])?,
         "receipt verification failed",
     );
     rejection(&inspect(tampered)?, "receipt verification failed");
@@ -415,23 +370,13 @@ fn assert_verify_fails_closed(node: &Node, path: &Path, claim: &str) -> Result<(
     )?;
     other.rpc("generate", &json!([433]))?;
     rejection(
-        &command(
-            &other,
-            "regtest",
-            "verify",
-            &["--receipt", receipt, "--claim", claim],
-        )?,
+        &command(&other, "regtest", "verify", &["--receipt", receipt])?,
         "claim does not match the node's chain state",
     );
     let unindexed = Node::start(image()?, &["--noutreexo".into()], Some(node))?;
     unindexed.wait_for_block(node, 435)?;
     rejection(
-        &command(
-            &unindexed,
-            "regtest",
-            "verify",
-            &["--receipt", receipt, "--claim", claim],
-        )?,
+        &command(&unindexed, "regtest", "verify", &["--receipt", receipt])?,
         "cannot retrieve Utreexo state",
     );
     Ok(())
