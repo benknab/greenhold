@@ -223,17 +223,19 @@ fn rpc_url_excludes_embedded_secrets_and_non_http_transports() {
     }
 }
 
+fn discover_cli(extra: &[&str]) -> clap::error::Result<Cli> {
+    Cli::try_parse_from(
+        ["host", "discover", "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"]
+            .into_iter()
+            .chain(extra.iter().copied()),
+    )
+}
+
 #[test]
-fn discover_selects_one_backend_and_validates_electrum_urls() -> Result<()> {
-    let parse = |extra: &[&str]| {
-        Cli::try_parse_from(
-            ["host", "discover", "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"]
-                .into_iter()
-                .chain(extra.iter().copied()),
-        )
-    };
+fn discover_defaults_to_electrum_and_selects_explicit_connections() -> Result<()> {
     for (args, expected) in [
-        (vec![], None),
+        (vec![], Some(DEFAULT_ELECTRUM)),
+        (vec!["--utreexod"], None),
         (vec!["--electrum"], Some(DEFAULT_ELECTRUM)),
         (
             vec!["--electrum", "--network", "bitcoin"],
@@ -248,7 +250,7 @@ fn discover_selects_one_backend_and_validates_electrum_urls() -> Result<()> {
             Some("ssl://localhost:50002"),
         ),
     ] {
-        let Command::Discover(options) = parse(&args)?.command else {
+        let Command::Discover(options) = discover_cli(&args)?.command else {
             bail!("expected discover command");
         };
         assert_eq!(
@@ -262,12 +264,40 @@ fn discover_selects_one_backend_and_validates_electrum_urls() -> Result<()> {
             options.connections.rpc_config()?;
         }
     }
+    for select in [vec![], vec!["--utreexod"]] {
+        let args: Vec<_> = select
+            .into_iter()
+            .chain([
+                "--utreexod-rpc",
+                "http://localhost:8334/",
+                "--utreexod-rpc-user",
+                "user",
+                "--utreexod-rpc-password",
+                "secret-password",
+            ])
+            .collect();
+        let Command::Discover(options) = discover_cli(&args)?.command else {
+            bail!("expected discover command");
+        };
+        assert!(options.electrum.is_none());
+        assert_eq!(
+            options.connections.utreexod_rpc.as_ref().map(Url::as_str),
+            Some("http://localhost:8334/")
+        );
+        options.connections.rpc_config()?;
+        assert!(!format!("{options:?}").contains("secret-password"));
+    }
+    Ok(())
+}
+
+#[test]
+fn discover_rejects_invalid_urls_and_mixed_backends() -> Result<()> {
     for url in [
         "https://host:50002",
         "tls://host",
         "tcp://user:pass@host:50001",
     ] {
-        let error = parse(&["--electrum", url])
+        let error = discover_cli(&["--electrum", url])
             .err()
             .context("invalid URL accepted")?;
         assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
@@ -282,7 +312,25 @@ fn discover_selects_one_backend_and_validates_electrum_urls() -> Result<()> {
         } else {
             "test"
         };
-        let error = parse(&["--electrum", flag, value])
+        let error = discover_cli(&["--electrum", flag, value])
+            .err()
+            .context("mixed backends accepted")?;
+        assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+    for args in [
+        vec!["--electrum", "--utreexod"],
+        vec!["--utreexod", "--electrum", "tcp://localhost:50001"],
+        vec![
+            "--electrum",
+            "--utreexod-rpc",
+            "http://localhost/",
+            "--utreexod-rpc-user",
+            "user",
+            "--utreexod-rpc-password",
+            "pass",
+        ],
+    ] {
+        let error = discover_cli(&args)
             .err()
             .context("mixed backends accepted")?;
         assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);

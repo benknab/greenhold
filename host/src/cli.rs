@@ -44,12 +44,20 @@ pub struct DiscoverOptions {
     #[arg(long, default_value = "bitcoin")]
     pub network: SupportedNetwork,
 
-    /// Discover through Electrum instead of Utreexod.
+    /// Discover through Electrum (the default).
     /// Without URL, use <tls://electrum.hospitablealpaca.com:50002>.
     /// Electrum excludes unconfirmed outputs and coins spent by pending transactions.
-    #[arg(long, value_name = "URL", num_args = 0..=1, default_missing_value = DEFAULT_ELECTRUM,
-        conflicts_with_all = ["utreexod_rpc", "utreexod_rpc_user", "utreexod_rpc_password"])]
+    #[arg(long, value_name = "URL", num_args = 0..=1,
+        default_value = DEFAULT_ELECTRUM, default_missing_value = DEFAULT_ELECTRUM,
+        default_value_if("utreexod", "true", None),
+        default_value_if("utreexod_rpc", clap::builder::ArgPredicate::IsPresent, None),
+        conflicts_with_all = ["utreexod", "utreexod_rpc", "utreexod_rpc_user", "utreexod_rpc_password"])]
     pub electrum: Option<electrum::Endpoint>,
+
+    /// Discover through Utreexod.
+    /// Use <https://utreexo.hospitablealpaca.com/> unless custom RPC settings are supplied.
+    #[arg(long)]
+    pub utreexod: bool,
 
     #[command(flatten)]
     pub connections: ConnectionConfig,

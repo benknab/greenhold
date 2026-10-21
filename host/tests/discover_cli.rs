@@ -10,6 +10,7 @@ fn discover_checks_address_and_network_before_node_access() -> Result<()> {
     assert!(help.contains("<ADDRESS>"));
     assert!(help.contains("one per line"));
     assert!(help.contains("--electrum [<URL>]"));
+    assert!(help.contains("--utreexod"));
     assert!(help.contains("tls://electrum.hospitablealpaca.com:50002"));
     for (address, code, message) in [
         ("not-an-address", 2, "invalid value"),
@@ -20,6 +21,8 @@ fn discover_checks_address_and_network_before_node_access() -> Result<()> {
         ),
     ] {
         for connection in [
+            vec![],
+            vec!["--utreexod"],
             vec!["--electrum"],
             vec!["--electrum", "tcp://127.0.0.1:9"],
             vec![
