@@ -1,76 +1,55 @@
 #!/usr/bin/env bash
-# Build release artifacts for the committed HEAD on macOS.
-#
-# Usage: scripts/build-release.sh
-#
-# The build uses a clean export of HEAD, so untracked and private files stay out of
-# it. Docker must be running. Output goes to target/dist/v<VERSION>/.
+# Build macOS release artifacts from a clean export of the committed HEAD, so untracked and
+# private files stay out. Docker must be running. Output goes to target/dist/v<VERSION>/.
 set -euo pipefail
-
-fail() {
-    echo "error: $*" >&2
-    exit 1
-}
+fail() { echo "error: $*" >&2 && exit 1; }
 
 [[ $(uname -s) == Darwin ]] || fail "this script builds macOS releases only"
 root=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
-git -C "$root" diff --quiet HEAD || fail "tracked files have uncommitted changes"
+cd "$root"
+git diff --quiet HEAD || fail "tracked files have uncommitted changes"
 docker info >/dev/null 2>&1 || fail "Docker must be running"
-
-commit=$(git -C "$root" rev-parse HEAD)
-version=$(sed -n 's/^version = "\(.*\)"$/\1/p' "$root/host/Cargo.toml")
+read -r commit epoch < <(git log -1 --no-show-signature --format='%H %ct')
+version=$(sed -n 's/^version = "\(.*\)"$/\1/p' host/Cargo.toml)
 [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] ||
     fail "cannot read the release version from host/Cargo.toml"
-tag=v$version
-if tagged=$(git -C "$root" rev-parse -q --verify "refs/tags/$tag^{commit}"); then
-    [[ $tagged == "$commit" ]] || fail "tag $tag exists on another commit"
-fi
+tagged=$(git rev-parse -q --verify "refs/tags/v$version^{commit}" || true)
+[[ -z $tagged || $tagged == "$commit" ]] || fail "tag v$version exists on another commit"
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/greenhold-release.XXXXXX")
 trap 'rm -rf "$work"' EXIT
-mkdir "$work/src" "$work/stage"
-git -C "$root" archive "$commit" | tar -x -C "$work/src"
-src=$(cd "$work/src" && pwd -P)
-cd "$src"
+cd -P "$work"
+git -C "$root" archive "$commit" | tar -x
 
-# Remove machine-specific paths from the binary. With the rust-src component
-# installed, standard library paths point to the local toolchain. Linker option -S
-# drops object paths; their lengths would change the Mach-O UUID.
-unset CARGO_TARGET_DIR CARGO_BUILD_TARGET_DIR CARGO_BUILD_RUSTFLAGS CARGO_ENCODED_RUSTFLAGS \
-    RUSTC_WRAPPER RUSTC_WORKSPACE_WRAPPER
+# Remove machine-specific paths from the binary; Cargo sees the physical path from `cd -P`.
+# With rust-src installed, standard library paths point to the local toolchain. Linker
+# option -S drops object paths; their lengths would change the Mach-O UUID.
+unset CARGO_TARGET_DIR CARGO_BUILD_TARGET_DIR RUSTC_WRAPPER RUSTC_WORKSPACE_WRAPPER
+read -r rustc_commit target < <(rustc -vV | sed -En 's/^(commit-hash|host): //p' | xargs)
 cargo_home=$(cd "${CARGO_HOME:-$HOME/.cargo}" && pwd -P)
-rust_src=$(rustc --print sysroot)/lib/rustlib/src/rust
-rustc_commit=$(rustc -vV | sed -n 's/^commit-hash: //p')
-unset RUSTFLAGS
-sep=$'\x1f'
-export CARGO_ENCODED_RUSTFLAGS="-Clink-arg=-Wl,-S$sep--remap-path-prefix=$src=/greenhold$sep\
---remap-path-prefix=$cargo_home=/cargo$sep--remap-path-prefix=$rust_src=/rustc/$rustc_commit"
-
+sysroot=$(rustc --print sysroot)
+printf -v flags '\x1f--remap-path-prefix=%s' "$PWD=/greenhold" "$cargo_home=/cargo" \
+    "$sysroot/lib/rustlib/src/rust=/rustc/$rustc_commit"
+export CARGO_ENCODED_RUSTFLAGS=-Clink-arg=-Wl,-S$flags
 cargo reproducible
-binary=$src/target/reproducible/greenhold
+binary=target/reproducible/greenhold
 version_output=$("$binary" --version)
 [[ $(head -n 1 <<<"$version_output") == "greenhold $version" ]] ||
     fail "binary version does not match $version"
 image_id=$(sed -n 's/^guest image ID: \([0-9a-f]\{64\}\)$/\1/p' <<<"$version_output")
 [[ -n $image_id ]] || fail "binary does not report a guest image ID"
-
-target=$(rustc -vV | sed -n 's/^host: //p')
-name=greenhold-$tag-$target
-out=$root/target/dist/$tag
-rm -rf "$out"
-mkdir -p "$out"
+name=greenhold-v$version-$target
+out=$root/target/dist/v$version
+rm -rf "$out" && mkdir -p "$out" || exit
 
 # Fix archive metadata so the archive bytes depend only on the binary and commit.
-cp "$binary" "$work/stage/greenhold"
-chmod 755 "$work/stage/greenhold"
-epoch=$(git -C "$root" show -s --format=%ct "$commit")
-TZ=UTC touch -t "$(date -u -r "$epoch" +%Y%m%d%H%M.%S)" "$work/stage/greenhold"
-COPYFILE_DISABLE=1 tar --format ustar --uid 0 --gid 0 --uname root --gname root \
-    --no-xattrs --no-acls --no-fflags -cf - -C "$work/stage" greenhold |
-    gzip -n -9 >"$out/$name.tar.gz"
+chmod 755 "$binary"
+TZ=UTC touch -t "$(date -u -r "$epoch" +%Y%m%d%H%M.%S)" "$binary"
+COPYFILE_DISABLE=1 tar --format ustar --uid 0 --gid 0 --uname root --gname root --no-xattrs \
+    --no-acls --no-fflags -cf - -C target/reproducible greenhold | gzip -n -9 >"$out/$name.tar.gz"
 (cd "$out" && shasum -a 256 "$name.tar.gz" >SHA256SUMS)
-
-cat >"$out/$name.build-info.txt" <<EOF
+printf '\nRelease artifacts: %s\n' "$out"
+tee "$out/$name.build-info.txt" <<EOF
 version: $version
 commit: $commit
 target: $target
@@ -85,8 +64,4 @@ linker: $(ld -v 2>&1 | head -n 1)
 macOS: $(sw_vers -productVersion) ($(sw_vers -buildVersion))
 macOS SDK: $(xcrun --show-sdk-version) ($(xcrun --show-sdk-build-version))
 EOF
-
-echo
-echo "Release artifacts: $out"
-cat "$out/$name.build-info.txt"
-[[ -n ${tagged:-} ]] || echo "Tag $tag does not exist yet."
+[[ -n $tagged ]] || echo "Tag v$version does not exist yet."
