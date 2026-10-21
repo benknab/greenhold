@@ -27,14 +27,16 @@ git clone https://github.com/benknab/greenhold.git
 cd greenhold
 rzup install rust 1.97.0
 rzup default rust 1.97.0
+rzup install r0vm 3.0.6
 ```
 
 `rzup default` selects the guest compiler for all projects on your machine.
 
-The guest needs only the rzup Rust toolchain. You do not need `r0vm` or a full
-`rzup install`, because the host binary contains the RISC Zero executor and
-prover. The first build downloads one RISC Zero circuit file and checks its
-SHA-256 hash.
+Install `r0vm` at the SDK version shown above for fast guest image ID calculation
+during builds. It is optional: without it, builds use a slower fallback and print
+a confusing “No such file or directory” message. The host binary contains the
+RISC Zero executor and prover, so it does not need `r0vm` to execute or prove.
+The first build downloads one RISC Zero circuit file and checks its SHA-256 hash.
 
 The reproducible build also needs [Docker](https://docs.docker.com/get-docker/).
 
