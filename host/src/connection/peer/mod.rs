@@ -19,7 +19,7 @@ const MAX_HANDSHAKE_MESSAGES: usize = 100;
 const MIN_PROTOCOL_VERSION: u32 = 70001;
 
 /// Message boundary shared by plaintext v1 and encrypted v2 transports.
-/// Implementations own framing, size limits, deadlines, and failure cleanup.
+/// Implementations own framing, deadlines, and failure cleanup.
 trait Transport {
     fn send(&mut self, message: NetworkMessage) -> Result<()>;
     fn receive(&mut self) -> Result<NetworkMessage>;

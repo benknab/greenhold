@@ -1,6 +1,6 @@
 use super::{
     super::{
-        MAX_MESSAGE,
+        MAX_REQUEST,
         socket::{SocketUrl, connect_tcp},
     },
     Transport,
@@ -43,7 +43,7 @@ impl Transport for Tcp {
     fn send(&mut self, message: NetworkMessage) -> Result<()> {
         let message = RawNetworkMessage::new(Magic::BITCOIN, message);
         let bytes = serialize(&message);
-        if bytes.len() as u64 > MAX_MESSAGE + 24 {
+        if bytes.len() as u64 > MAX_REQUEST + 24 {
             bail!("P2P request exceeds size limit");
         }
         let mut stream = self.stream.take().context("P2P connection is closed")?;
@@ -70,14 +70,15 @@ fn read_message(stream: &mut impl Read) -> Result<NetworkMessage> {
         bail!("wrong P2P network magic");
     }
     let size = u32::from_le_bytes(header[16..20].try_into()?);
-    if u64::from(size) > MAX_MESSAGE {
-        bail!("P2P response exceeds size limit");
-    }
     let mut bytes = header.to_vec();
-    bytes.resize(24 + usize::try_from(size)?, 0);
+    // Read only this frame and grow the buffer as its payload arrives.
     stream
-        .read_exact(&mut bytes[24..])
+        .take(u64::from(size))
+        .read_to_end(&mut bytes)
         .context("P2P body read failed")?;
+    if bytes.len() - header.len() != usize::try_from(size)? {
+        bail!("P2P body is truncated");
+    }
     let message: RawNetworkMessage =
         deserialize(&bytes).context("invalid P2P message or checksum")?;
     Ok(message.into_payload())

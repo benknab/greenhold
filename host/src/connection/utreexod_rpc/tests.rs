@@ -1,8 +1,5 @@
 use super::*;
-use crate::{
-    connection::MAX_MESSAGE,
-    test_support::{accept, read_http},
-};
+use crate::test_support::{accept, read_http};
 use anyhow::{Context, Result, anyhow, bail};
 use bitcoin::OutPoint;
 use serde_json::{Value, json};
@@ -111,7 +108,8 @@ fn header_endpoint_parses_both_formats_without_verifying_chain_data() -> Result<
 fn authenticated_and_anonymous_lookup_preserves_block_and_root_bytes() -> Result<()> {
     for auth in [false, true] {
         let replies = vec![
-            (best_request(), json!({"id":1,"result":{"hash":BLOCK,"height":123},"error":null}).to_string()),
+            (best_request(), json!({"id":1,"result":{"hash":BLOCK,"height":123},"error":null,
+                "future_field":"x".repeat(128 * 1024)}).to_string()),
             (json!({"jsonrpc":"1.0","id":2,"method":"getutreexoroots","params":[BLOCK]}),
              json!({"id":2,"result":{"numleaves":3,"roots":[BLOCK,"00".repeat(32)]},"error":null}).to_string()),
         ];
@@ -166,11 +164,6 @@ fn transport_rejections_are_specific_and_redact_remote_values() -> Result<()> {
             "invalid JSON-RPC result",
         ),
         ("200 OK", "secret".into(), "invalid JSON-RPC response"),
-        (
-            "200 OK",
-            " ".repeat(usize::try_from(MAX_MESSAGE)? + 1),
-            "RPC response exceeds size limit",
-        ),
     ] {
         let (config, task) = serve(status, vec![(best_request(), body)], false)?;
         let error = Client::new(&config)
@@ -238,7 +231,9 @@ fn batched_coin_lookup_restores_order_and_preserves_request_ids() -> Result<()> 
             ),
             (
                 json!(requests),
-                json!([{"id":3,"result":null},{"id":2,"result":coin}]).to_string(),
+                json!([{"id":3,"result":null},
+                    {"id":2,"result":coin,"future_field":"x".repeat(2 * 1024 * 1024)}])
+                .to_string(),
             ),
             (
                 json!({"jsonrpc":"1.0","id":4,"method":"getbestblock","params":[]}),

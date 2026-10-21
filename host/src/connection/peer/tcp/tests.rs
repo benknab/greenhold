@@ -4,26 +4,33 @@ use std::{io, net::TcpListener};
 
 #[test]
 fn reads_one_message_at_a_time() -> Result<()> {
+    let payload = vec![7; 128 * 1024];
     let mut bytes = serialize(&RawNetworkMessage::new(
         Magic::BITCOIN,
-        NetworkMessage::Ping(42),
+        NetworkMessage::Unknown {
+            command: "uproof".try_into()?,
+            payload: payload.clone(),
+        },
     ));
     bytes.extend(serialize(&RawNetworkMessage::new(
         Magic::BITCOIN,
         NetworkMessage::Verack,
     )));
     let mut input = bytes.as_slice();
-    assert!(matches!(
+    assert_eq!(
         read_message(&mut input)?,
-        NetworkMessage::Ping(42)
-    ));
+        NetworkMessage::Unknown {
+            command: "uproof".try_into()?,
+            payload,
+        }
+    );
     assert!(matches!(read_message(&mut input)?, NetworkMessage::Verack));
     assert!(input.is_empty());
     Ok(())
 }
 
 #[test]
-fn rejects_wrong_network_checksum_and_oversized_messages() {
+fn rejects_wrong_network_checksum_and_truncated_messages() {
     let wrong_network = serialize(&RawNetworkMessage::new(
         Magic::TESTNET3,
         NetworkMessage::Verack,

@@ -16,11 +16,11 @@ fn only_unspent_confirmed_candidates_reach_gettxout() -> Result<()> {
 }
 
 #[test]
-fn oversized_history_retries_the_same_offset_with_smaller_pages() -> Result<()> {
+fn large_history_pages_preserve_pagination() -> Result<()> {
     check_discovery(true)
 }
 
-fn check_discovery(oversized: bool) -> Result<()> {
+fn check_discovery(large_reply: bool) -> Result<()> {
     let address = Address::p2wsh(
         &bitcoin::ScriptBuf::from_bytes(vec![0x51]),
         Network::Regtest,
@@ -33,8 +33,7 @@ fn check_discovery(oversized: bool) -> Result<()> {
         None,
     );
     // One full page of confirmed outputs; the next page spends all except one.
-    let page_size = if oversized { PAGE_SIZE / 2 } else { PAGE_SIZE };
-    let outpoints: Vec<_> = (0..page_size)
+    let outpoints: Vec<_> = (0..PAGE_SIZE)
         .map(|index| OutPoint::new(Txid::hash(&index.to_le_bytes()), 0))
         .collect();
     let survivor = outpoints[0];
@@ -58,7 +57,7 @@ fn check_discovery(oversized: bool) -> Result<()> {
         {"txid":Txid::from_byte_array([2;32]),"vin":[{"txid":survivor.txid,"vout":survivor.vout}],
          "vout":[{"n":0,"scriptPubKey":{"hex":script}}]}
     ]);
-    let mut requests = vec![
+    let requests = vec![
         ("getblockhash", json!([0]), json!(genesis)),
         (
             "getbestblock",
@@ -67,12 +66,12 @@ fn check_discovery(oversized: bool) -> Result<()> {
         ),
         (
             "searchrawtransactions",
-            json!([address.to_string(), 1, 0, page_size, 0, false]),
+            json!([address.to_string(), 1, 0, PAGE_SIZE, 0, false]),
             json!(first),
         ),
         (
             "searchrawtransactions",
-            json!([address.to_string(), 1, page_size, page_size, 0, false]),
+            json!([address.to_string(), 1, PAGE_SIZE, PAGE_SIZE, 0, false]),
             second,
         ),
         (
@@ -89,17 +88,7 @@ fn check_discovery(oversized: bool) -> Result<()> {
             json!({"hash":genesis,"height":20}),
         ),
     ];
-    if oversized {
-        requests.insert(
-            2,
-            (
-                "searchrawtransactions",
-                json!([address.to_string(), 1, 0, PAGE_SIZE, 0, false]),
-                serde_json::Value::Null,
-            ),
-        );
-    }
-    let task = thread::spawn(move || serve(&listener, requests, oversized));
+    let task = thread::spawn(move || serve(&listener, requests, large_reply));
     let result = super::outpoints(&address, Network::Regtest, &config);
     task.join().map_err(|_| anyhow!("RPC mock panicked"))??;
     assert_eq!(result?, [survivor]);
@@ -109,7 +98,7 @@ fn check_discovery(oversized: bool) -> Result<()> {
 fn serve(
     listener: &TcpListener,
     requests: Vec<(&str, Value, Value)>,
-    oversized: bool,
+    large_reply: bool,
 ) -> Result<()> {
     for (index, (method, params, result)) in requests.into_iter().enumerate() {
         let (socket, _) = accept(listener)?;
@@ -121,8 +110,9 @@ fn serve(
                 json!([{"id":id,"result":result}]).to_string(),
             )
         } else {
-            let body = if oversized && index == 2 {
-                " ".repeat(16 * 1024 * 1024 + 1)
+            let body = if large_reply && index == 2 {
+                json!({"id":id,"result":result,"future_field":"x".repeat(17 * 1024 * 1024)})
+                    .to_string()
             } else {
                 json!({"id":id,"result":result}).to_string()
             };
@@ -157,6 +147,24 @@ fn electrum_candidates_are_confirmed_sorted_and_unique() -> Result<()> {
     )??;
     assert_eq!(result, [OutPoint::new(first, 1), OutPoint::new(second, 3)]);
     assert!(electrum_response(Network::Regtest, json!([]))??.is_empty());
+    Ok(())
+}
+
+#[test]
+fn electrum_accepts_large_unspent_responses() -> Result<()> {
+    let expected: Vec<_> = (0_u32..1_000)
+        .map(|index| OutPoint::new(Txid::hash(&index.to_le_bytes()), 0))
+        .collect();
+    let mut coins: Vec<_> = expected
+        .iter()
+        .map(|coin| json!({"tx_hash":coin.txid,"tx_pos":coin.vout,"height":1}))
+        .collect();
+    coins[0]["future_field"] = json!("x".repeat(17 * 1024 * 1024));
+    let actual = electrum_response(Network::Regtest, json!(coins))??;
+    assert_eq!(
+        actual.into_iter().collect::<BTreeSet<_>>(),
+        expected.into_iter().collect()
+    );
     Ok(())
 }
 

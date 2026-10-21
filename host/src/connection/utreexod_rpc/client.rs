@@ -1,9 +1,9 @@
 use super::{
-    AddressTransaction, BlockHeaderResponse, BlockLocation, ChainTipProof, Config,
-    ResponseTooLarge, Roots, TxOutResponse,
+    AddressTransaction, BlockHeaderResponse, BlockLocation, ChainTipProof, Config, Roots,
+    TxOutResponse,
 };
 use crate::connection::{
-    MAX_MESSAGE, TIMEOUT,
+    TIMEOUT,
     header::HeaderResponse,
     json_rpc::{Request, Response, ServerError},
 };
@@ -14,9 +14,6 @@ use serde::{Serialize, de::DeserializeOwned};
 use std::{io::Read, time::Duration};
 use ureq::{Agent, http::HeaderValue};
 
-// Transaction pages are much larger than header, coin, and proof responses.
-const MAX_HISTORY_PAGE: u64 = 16 * 1024 * 1024;
-const MAX_BATCH_REPLY: u64 = 1024 * 1024;
 const BULK_TIMEOUT: Duration = Duration::from_mins(1);
 
 /// HTTP JSON-RPC client with one method per supported Utreexod endpoint.
@@ -98,11 +95,7 @@ impl<'a> Client<'a> {
                 }
             })
             .collect();
-        let bytes = self.send(
-            serde_json::to_vec(&requests)?,
-            MAX_BATCH_REPLY,
-            BULK_TIMEOUT,
-        )?;
+        let bytes = self.send(serde_json::to_vec(&requests)?, BULK_TIMEOUT)?;
         let mut replies = Response::parse_batch(&bytes)?;
         replies.sort_unstable_by_key(|reply| reply.id);
         if replies.len() != outpoints.len()
@@ -125,10 +118,9 @@ impl<'a> Client<'a> {
         vin_extra: bool,
         reverse: bool,
     ) -> Result<Vec<AddressTransaction>> {
-        match self.call_limited(
+        match self.call_with_timeout(
             "searchrawtransactions",
             (address, 1, skip, count, u8::from(vin_extra), reverse),
-            MAX_HISTORY_PAGE,
             BULK_TIMEOUT,
         ) {
             // Utreexod uses ErrRPCNoTxInfo for unused addresses and exhausted pages.
@@ -153,14 +145,13 @@ impl<'a> Client<'a> {
     }
 
     fn call<T: DeserializeOwned>(&mut self, method: &str, params: impl Serialize) -> Result<T> {
-        self.call_limited(method, params, MAX_MESSAGE, TIMEOUT)
+        self.call_with_timeout(method, params, TIMEOUT)
     }
 
-    fn call_limited<T: DeserializeOwned>(
+    fn call_with_timeout<T: DeserializeOwned>(
         &mut self,
         method: &str,
         params: impl Serialize,
-        limit: u64,
         timeout: Duration,
     ) -> Result<T> {
         self.id += 1;
@@ -170,7 +161,7 @@ impl<'a> Client<'a> {
             method,
             params,
         })?;
-        let bytes = self.send(body, limit, timeout)?;
+        let bytes = self.send(body, timeout)?;
         // Remote bodies and transport errors may contain secrets. Do not print them.
         let reply = Response::parse(&bytes)?;
         if reply.id != self.id {
@@ -179,7 +170,7 @@ impl<'a> Client<'a> {
         reply.into_result()
     }
 
-    fn send(&self, body: Vec<u8>, limit: u64, timeout: Duration) -> Result<Vec<u8>> {
+    fn send(&self, body: Vec<u8>, timeout: Duration) -> Result<Vec<u8>> {
         let mut request = self
             .agent
             .post(self.config.url.as_str())
@@ -207,12 +198,8 @@ impl<'a> Client<'a> {
         response
             .body_mut()
             .as_reader()
-            .take(limit + 1)
             .read_to_end(&mut bytes)
             .map_err(|_| anyhow!("RPC response read failed"))?;
-        if bytes.len() as u64 > limit {
-            return Err(ResponseTooLarge.into());
-        }
         Ok(bytes)
     }
 }

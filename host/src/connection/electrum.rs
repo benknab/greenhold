@@ -1,5 +1,5 @@
 use super::{
-    MAX_MESSAGE,
+    MAX_REQUEST,
     header::HeaderResponse,
     json_rpc::{Request, Response, ServerError},
     socket::{SocketUrl, connect_tcp},
@@ -231,7 +231,7 @@ impl Client {
             params,
         })?;
         request.push(b'\n');
-        if request.len() as u64 > MAX_MESSAGE {
+        if request.len() as u64 > MAX_REQUEST {
             bail!("Electrum request exceeds size limit");
         }
         let mut stream = self
@@ -244,7 +244,8 @@ impl Client {
             .write_all(&request)
             .context("Electrum write failed")?;
         stream.get_mut().flush().context("Electrum flush failed")?;
-        let reply = read_reply(&mut stream)?;
+        let reply = read_reply(&mut stream)
+            .with_context(|| format!("Electrum {method} response failed"))?;
         if reply.id != id {
             bail!("JSON-RPC response ID does not match request");
         }
@@ -258,13 +259,22 @@ impl Client {
 
 fn read_reply(stream: &mut impl BufRead) -> Result<Response> {
     let mut bytes = Vec::new();
-    stream
-        .by_ref()
-        .take(MAX_MESSAGE + 1)
-        .read_until(b'\n', &mut bytes)
-        .context("Electrum read failed")?;
-    if bytes.len() as u64 > MAX_MESSAGE || bytes.last() != Some(&b'\n') {
-        bail!("Electrum response is truncated or exceeds size limit");
+    stream.read_until(b'\n', &mut bytes).map_err(|error| {
+        let message = if matches!(
+            error.kind(),
+            io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
+        ) {
+            "Electrum read timed out"
+        } else {
+            "Electrum read failed"
+        };
+        anyhow::Error::new(error).context(message)
+    })?;
+    if bytes.last() != Some(&b'\n') {
+        bail!("Electrum response ended before newline");
     }
     Response::parse(&bytes)
 }
+
+#[cfg(test)]
+mod tests;

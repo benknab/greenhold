@@ -44,18 +44,10 @@ pub fn outpoints(
     let address = address.to_string();
     let mut candidates = BTreeSet::new();
     let mut skip = 0;
-    let mut page_size = PAGE_SIZE;
     loop {
-        let page = match rpc.search_raw_transactions(&address, skip, page_size, false, false) {
-            Err(error) if error.is::<utreexod_rpc::ResponseTooLarge>() && page_size > 1 => {
-                // Retry the same offset. Keep the smaller size for the rest of this run.
-                page_size /= 2;
-                continue;
-            }
-            result => result.context(
-                "cannot search address transactions; node needs --addrindex and RPC access",
-            )?,
-        };
+        let page = rpc
+            .search_raw_transactions(&address, skip, PAGE_SIZE, false, false)
+            .context("cannot search address transactions; node needs --addrindex and RPC access")?;
         let count = u32::try_from(page.len())?;
         // Confirmed history is oldest-first, including transaction order within a block.
         // Remove spends as we go, so gettxout runs only for the surviving candidates.
@@ -71,7 +63,7 @@ pub fn outpoints(
                     .map(|output| OutPoint::new(transaction.txid, output.n)),
             );
         }
-        if count < page_size {
+        if count < PAGE_SIZE {
             break;
         }
         skip = skip
