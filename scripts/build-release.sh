@@ -34,7 +34,8 @@ src=$(cd "$work/src" && pwd -P)
 cd "$src"
 
 # Remove machine-specific paths from the binary. With the rust-src component
-# installed, standard library paths point to the local toolchain.
+# installed, standard library paths point to the local toolchain. Linker option -S
+# drops object paths; their lengths would change the Mach-O UUID.
 unset CARGO_TARGET_DIR CARGO_BUILD_TARGET_DIR CARGO_BUILD_RUSTFLAGS CARGO_ENCODED_RUSTFLAGS \
     RUSTC_WRAPPER RUSTC_WORKSPACE_WRAPPER
 cargo_home=$(cd "${CARGO_HOME:-$HOME/.cargo}" && pwd -P)
@@ -42,7 +43,7 @@ rust_src=$(rustc --print sysroot)/lib/rustlib/src/rust
 rustc_commit=$(rustc -vV | sed -n 's/^commit-hash: //p')
 unset RUSTFLAGS
 sep=$'\x1f'
-export CARGO_ENCODED_RUSTFLAGS="--remap-path-prefix=$src=/greenhold$sep\
+export CARGO_ENCODED_RUSTFLAGS="-Clink-arg=-Wl,-S$sep--remap-path-prefix=$src=/greenhold$sep\
 --remap-path-prefix=$cargo_home=/cargo$sep--remap-path-prefix=$rust_src=/rustc/$rustc_commit"
 
 cargo reproducible
