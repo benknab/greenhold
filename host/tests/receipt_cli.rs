@@ -1,5 +1,24 @@
 use anyhow::Result;
+use greenhold_guest_builder::GREENHOLD_GUEST_ID;
+use risc0_zkvm::sha::Digest;
 use std::{fs, process::Command};
+
+#[test]
+fn version_names_the_guest_image_id_that_receipts_must_match() -> Result<()> {
+    let expected = format!(
+        "greenhold {}\nguest image ID: {}\n",
+        env!("CARGO_PKG_VERSION"),
+        Digest::from(GREENHOLD_GUEST_ID)
+    );
+    for flag in ["--version", "-V"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_greenhold"))
+            .arg(flag)
+            .output()?;
+        assert!(output.status.success());
+        assert_eq!(String::from_utf8(output.stdout)?, expected);
+    }
+    Ok(())
+}
 
 #[test]
 fn verify_and_inspect_reject_bad_receipt_files_before_node_access() -> Result<()> {

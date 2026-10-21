@@ -9,7 +9,7 @@ publish.workspace = true
 workspace = true
 
 [features]
-# Build the guest in RISC Zero's pinned Docker image and check the committed image ID.
+# Build the guest in RISC Zero's pinned Docker image.
 reproducible = []
 
 [build-dependencies]

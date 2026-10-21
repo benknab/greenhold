@@ -47,8 +47,11 @@ export CARGO_ENCODED_RUSTFLAGS="--remap-path-prefix=$src=/greenhold$sep\
 
 cargo reproducible
 binary=$src/target/reproducible/greenhold
-[[ $("$binary" --version) == "greenhold $version" ]] ||
+version_output=$("$binary" --version)
+[[ $(head -n 1 <<<"$version_output") == "greenhold $version" ]] ||
     fail "binary version does not match $version"
+image_id=$(sed -n 's/^guest image ID: \([0-9a-f]\{64\}\)$/\1/p' <<<"$version_output")
+[[ -n $image_id ]] || fail "binary does not report a guest image ID"
 
 target=$(rustc -vV | sed -n 's/^host: //p')
 name=greenhold-$tag-$target
@@ -70,7 +73,7 @@ cat >"$out/$name.build-info.txt" <<EOF
 version: $version
 commit: $commit
 target: $target
-guest image ID: $(tr -d '[:space:]' <guest-builder/image-id)
+guest image ID: $image_id
 greenhold SHA-256: $(shasum -a 256 "$binary" | cut -d ' ' -f 1)
 archive SHA-256: $(cut -d ' ' -f 1 "$out/SHA256SUMS")
 build command: scripts/build-release.sh

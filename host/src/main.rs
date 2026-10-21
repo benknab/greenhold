@@ -14,7 +14,7 @@ mod verify;
 mod test_support;
 
 use anyhow::{Context as _, Result, bail};
-use clap::Parser;
+use clap::{CommandFactory, FromArgMatches};
 use greenhold_core::{
     claim::Claim,
     eligibility::EligibleCoin,
@@ -25,7 +25,15 @@ use output::{Report, Status};
 use std::{fs, process::ExitCode};
 
 fn main() -> ExitCode {
-    match run(cli::Cli::parse()) {
+    // Receipts verify only against the guest image ID built into this binary.
+    let version = format!(
+        "{}\nguest image ID: {}",
+        env!("CARGO_PKG_VERSION"),
+        guest::image_id()
+    );
+    let matches = cli::Cli::command().version(version).get_matches();
+    let cli = cli::Cli::from_arg_matches(&matches).unwrap_or_else(|error| error.exit());
+    match run(cli) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("{error:#}");

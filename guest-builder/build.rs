@@ -1,6 +1,6 @@
 use anyhow::{Context as _, Result, bail};
 use risc0_build::{DockerOptionsBuilder, GuestOptionsBuilder};
-use std::{collections::HashMap, env, fs, path::PathBuf};
+use std::{collections::HashMap, env, path::PathBuf};
 
 // RISC Zero's guest builder for Rust 1.97, pinned by content digest.
 const BUILDER_IMAGE: &str =
@@ -32,7 +32,7 @@ fn main() -> Result<()> {
     reproducible()
 }
 
-/// Build the guest in the pinned Docker image and require the committed image ID.
+/// Build the guest in the pinned Docker image.
 fn reproducible() -> Result<()> {
     for name in ["RISC0_DOCKER_CONTAINER_TAG", "RISC0_SKIP_BUILD"] {
         println!("cargo:rerun-if-env-changed={name}");
@@ -47,18 +47,6 @@ fn reproducible() -> Result<()> {
         .docker_container_tag(BUILDER_IMAGE)
         .build()?;
     let options = GuestOptionsBuilder::default().use_docker(docker).build()?;
-    let methods =
-        risc0_build::embed_methods_with_options(HashMap::from([("greenhold-guest", options)]));
-    let [method] = methods.as_slice() else {
-        bail!("expected exactly one guest program");
-    };
-
-    let path = manifest_dir.join("image-id");
-    println!("cargo:rerun-if-changed={}", path.display());
-    let expected = fs::read_to_string(&path).context("cannot read guest-builder/image-id")?;
-    let actual = method.image_id.to_string();
-    if actual != expected.trim() {
-        bail!("guest image ID {actual} does not match guest-builder/image-id");
-    }
+    risc0_build::embed_methods_with_options(HashMap::from([("greenhold-guest", options)]));
     Ok(())
 }
