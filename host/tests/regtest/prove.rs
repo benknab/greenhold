@@ -5,14 +5,14 @@ use crate::support::{
 };
 use anyhow::{Context, Result};
 use bitcoin::{Address, Amount, Network, OutPoint, Transaction};
-use greenhold_core::claim::Claim;
+use greenhold_core::claim::{Claim, Nonce};
 use greenhold_guest_builder::GREENHOLD_GUEST_ID;
 use risc0_zkvm::{InnerReceipt, Receipt, sha::Digest};
 use serde_json::{Value, json};
 use std::{fs, path::Path, time::Duration};
 
 const TAG: &[u8] = b"greenhold/receipt/v1\0";
-const NONCE: &str = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+const NONCE: &str = " Challenge café 🔑 ";
 
 #[test]
 #[ignore = "requires Docker; runs Utreexod nodes"]
@@ -48,7 +48,10 @@ fn prepared_claim_survives_signing_delay_and_spending_but_not_a_reorg() -> Resul
     )?)?;
     assert_claim(&node, &report, 433, 433, 2_000_000_000)?;
     assert_claim_file(&claim_path, &report)?;
-    assert_eq!(report["claim"]["nonce"], NONCE);
+    assert_eq!(
+        report["claim"]["nonce"],
+        Nonce::from_text(NONCE).to_string()
+    );
     assert_preparation_rejects_ineligible(&node, &address, &funding, directory.path())?;
 
     // Sign after advancing the tip. No fresh proof for the frozen T can be fetched.
@@ -56,8 +59,8 @@ fn prepared_claim_survives_signing_delay_and_spending_but_not_a_reorg() -> Resul
     let signature = sign_claim(&report, &claim_path)?;
     let dry_run = || prove_dry(&node, claim, witness, &signature);
     let executed_output = dry_run()?;
-    assert_progress(&executed_output, false)?;
     let executed = success(&executed_output)?;
+    assert_progress(&executed_output, false)?;
     assert_eq!(executed["claim"], report["claim"]);
     assert_new_claim_uses_tip(&node, &input, directory.path())?;
     assert_human_dry_run(&node, claim, witness, &signature, &report)?;
@@ -94,8 +97,8 @@ fn prepared_claim_survives_signing_delay_and_spending_but_not_a_reorg() -> Resul
         ],
         Duration::from_mins(10),
     )?;
-    assert_progress(&proved_output, true)?;
     let proved = success(&proved_output)?;
+    assert_progress(&proved_output, true)?;
     assert_receipt(&proved, &fs::read(receipt)?, &fs::read(claim)?)?;
     assert!(proved.get("cycles").is_none());
     let accepted = json!({"claim": report["claim"],
@@ -163,6 +166,7 @@ fn assert_new_claim_uses_tip(node: &Node, input: &str, directory: &Path) -> Resu
             &[base.as_slice(), extra.as_slice()].concat(),
         )?)?;
         assert_claim(node, &report, unspent_since, 434, 1)?;
+        assert_eq!(report["claim"]["nonce"], Nonce::default().to_string());
         assert_claim_file(&claim, &report)?;
         assert!(witness.exists());
     }
@@ -232,6 +236,30 @@ fn assert_verified_reports(node: &Node, receipt: &str, expected: &Value) -> Resu
     assert_public_report(&report, expected);
     assert_eq!(report["status"], "verified");
     assert!(report.get("expected_claim_checked").is_none());
+    let report = success(&command(
+        node,
+        "regtest",
+        "verify",
+        &["--json", "--receipt", receipt, "--nonce", NONCE],
+    )?)?;
+    assert_public_report(&report, expected);
+    assert_eq!(report["status"], "verified");
+    for wrong in [
+        "",
+        NONCE.trim(),
+        "another challenge",
+        &Nonce::from_text(NONCE).to_string(),
+    ] {
+        rejection(
+            &command(
+                node,
+                "regtest",
+                "verify",
+                &["--receipt", receipt, "--nonce", wrong],
+            )?,
+            "receipt nonce does not match the expected nonce",
+        );
+    }
     assert_public_report(&success(&inspect(receipt)?)?, expected);
     assert_human_report(
         &command(node, "regtest", "verify", &["--receipt", receipt])?,
@@ -267,10 +295,10 @@ fn assert_progress(output: &std::process::Output, proved: bool) -> Result<()> {
     for stage in &stages[..count] {
         let (_, rest) = remaining
             .split_once(&format!("{stage}...\n"))
-            .context("missing stage start")?;
+            .with_context(|| format!("missing {stage} start in stderr:\n{stderr}"))?;
         let (_, rest) = rest
             .split_once(&format!("{stage}: done ("))
-            .context("missing stage completion")?;
+            .with_context(|| format!("missing {stage} completion in stderr:\n{stderr}"))?;
         remaining = rest;
     }
     if !proved {

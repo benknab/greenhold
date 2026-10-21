@@ -4,14 +4,31 @@ use bitcoin::Network;
 const OUTPOINT: &str = "1111111111111111111111111111111111111111111111111111111111111111:0";
 
 #[test]
-fn claim_accepts_only_fixed_length_hex_nonces() -> Result<()> {
-    let nonce = "ab".repeat(32);
-    let Command::Claim(options) = cli(&["--nonce", &nonce])?.command else {
+fn claim_hashes_exact_nonce_text_and_defaults_to_empty() -> Result<()> {
+    let Command::Claim(options) = cli(&[])?.command else {
         bail!("expected claim command");
     };
-    assert_eq!(options.nonce.to_string(), nonce);
-    for invalid in ["", "hello", &"ab".repeat(31), &"ab".repeat(33)] {
-        assert!(cli(&["--nonce", invalid]).is_err());
+    assert_eq!(options.nonce, Nonce::from_text(""));
+    for text in ["", "hello", " Challenge café 🔑 ", &"ab".repeat(32)] {
+        let Command::Claim(options) = cli(&["--nonce", text])?.command else {
+            bail!("expected claim command");
+        };
+        assert_eq!(options.nonce, Nonce::from_text(text));
+    }
+    Ok(())
+}
+
+#[test]
+fn verify_distinguishes_no_expected_nonce_from_empty_text() -> Result<()> {
+    for text in [None, Some(""), Some(" Challenge café 🔑 ")] {
+        let mut args = vec!["host", "verify", "--receipt", "claim.receipt"];
+        if let Some(text) = text {
+            args.extend(["--nonce", text]);
+        }
+        let Command::Verify(options) = Cli::try_parse_from(args)?.command else {
+            bail!("expected verify command");
+        };
+        assert_eq!(options.nonce, text.map(Nonce::from_text));
     }
     Ok(())
 }

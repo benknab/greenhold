@@ -234,7 +234,8 @@ pub fn command_with_timeout(
 pub fn success(output: &Output) -> Result<Value> {
     assert!(
         output.status.success(),
-        "{}",
+        "command failed with {}:\n{}",
+        output.status,
         String::from_utf8_lossy(&output.stderr)
     );
     Ok(serde_json::from_slice(&output.stdout)?)

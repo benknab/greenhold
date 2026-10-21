@@ -160,6 +160,40 @@ fn signing_message_matches_independent_vector_and_binds_every_field() -> Result<
 }
 
 #[test]
+fn text_nonces_match_independent_vectors_and_preserve_stored_bytes() -> Result<()> {
+    // Python hashlib vectors include the domain prefix and exact UTF-8 text.
+    for (text, digest) in [
+        (
+            "",
+            "f2070f90d55bb223ed35d1a7ea4935d6c29a70a301fe4497f7dea9f30210e3d9",
+        ),
+        (
+            "hello",
+            "b7b515e44c6c8c831f1161b9064e9a14a57ab47c3820f98c4ffd8f15414a5610",
+        ),
+        (
+            " Challenge café 🔑 ",
+            "de64e3e8c4c9a84ce236949c89e71d355d4999884ab357127dc365c7c728d816",
+        ),
+    ] {
+        let nonce = Nonce::from_text(text);
+        assert_eq!(nonce.to_string(), digest);
+        assert_eq!(digest.parse::<Nonce>()?, nonce);
+        assert_eq!(serde_json::from_value::<Nonce>(json!(digest))?, nonce);
+        assert_eq!(serde_json::to_value(nonce)?, json!(digest));
+        assert_ne!(Nonce::from_text(digest), nonce);
+        let claim = Claim::new(&context(10, 20)?, MinimumAmount::try_from(1)?, nonce);
+        assert_eq!(claim.to_bytes().len(), 195);
+        assert_eq!(Claim::try_from(claim.to_bytes().as_slice())?, claim);
+    }
+    assert_eq!(Nonce::default(), Nonce::from_text(""));
+    for changed in ["Hello", "hello ", " hello"] {
+        assert_ne!(Nonce::from_text(changed), Nonce::from_text("hello"));
+    }
+    Ok(())
+}
+
+#[test]
 fn nonce_parsing_requires_exactly_32_hex_bytes() -> Result<()> {
     let nonce: Nonce = "AB".repeat(32).parse()?;
     assert_eq!(nonce.to_string(), "ab".repeat(32));

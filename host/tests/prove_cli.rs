@@ -19,7 +19,7 @@ fn claim_and_prove_explain_the_prepared_signing_flow() -> Result<()> {
                 "--unspent-since <HEIGHT>",
                 "tip-only",
                 "--minimum-sats <SATS>",
-                "--nonce <HEX>",
+                "--nonce <TEXT>",
                 "--witness <FILE>",
                 "--output <FILE>",
             ],
@@ -33,7 +33,7 @@ fn claim_and_prove_explain_the_prepared_signing_flow() -> Result<()> {
                 "--dry-run",
             ],
         ),
-        ("verify", vec!["--receipt <FILE>"]),
+        ("verify", vec!["--receipt <FILE>", "--nonce <TEXT>"]),
         ("inspect", vec!["--receipt <FILE>"]),
     ] {
         let output = Command::new(binary).args([command, "--help"]).output()?;

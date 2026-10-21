@@ -1,6 +1,6 @@
 use crate::connection::{electrum, utreexod_rpc};
 use anyhow::{Context, Result, bail};
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, builder::TypedValueParser};
 use greenhold_core::{
     claim::Nonce, eligibility::MinimumAmount, network::SupportedNetwork, verification::Signature,
 };
@@ -74,6 +74,10 @@ pub struct VerifyOptions {
     #[arg(long, value_name = "FILE")]
     pub receipt: PathBuf,
 
+    /// Expected nonce text, hashed exactly as supplied. If omitted, accept any nonce.
+    #[arg(long, value_name = "TEXT", value_parser = nonce_parser())]
+    pub nonce: Option<Nonce>,
+
     /// Bitcoin network the claim must name: bitcoin, signet, or regtest.
     #[arg(long, default_value = "bitcoin")]
     pub network: SupportedNetwork,
@@ -121,8 +125,8 @@ pub struct ProveOptions {
 
 #[derive(Debug, Args)]
 pub struct ClaimOptions {
-    /// Public nonce: 64 hex characters. Defaults to zero, without a fresh challenge.
-    #[arg(long, value_name = "HEX", default_value_t = Nonce::default())]
+    /// Public nonce text, hashed exactly as supplied. Defaults to empty text, without a fresh challenge.
+    #[arg(long, value_name = "TEXT", default_value = "", value_parser = nonce_parser())]
     pub nonce: Nonce,
 
     /// Candidate output as TXID:VOUT (zero-based output index).
@@ -222,6 +226,10 @@ impl std::fmt::Debug for Redacted {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("<redacted>")
     }
+}
+
+fn nonce_parser() -> impl TypedValueParser<Value = Nonce> {
+    clap::builder::StringValueParser::new().map(|text| Nonce::from_text(&text))
 }
 
 fn rpc_user(text: &str) -> Result<String> {

@@ -9,7 +9,7 @@ use anyhow::{Context as _, Result, bail};
 use bitcoin::{
     BlockHash, Network,
     blockdata::constants::genesis_block,
-    hashes::{Hash, sha256},
+    hashes::{Hash, HashEngine as _, sha256},
     hex::{DisplayHex as _, FromHex as _},
 };
 use serde::{Deserialize, Serialize};
@@ -19,10 +19,28 @@ use std::{fmt, str::FromStr};
 const TAG: &[u8] = b"greenhold/claim/v2\0";
 
 /// Public challenge bytes, encoded as exactly 64 hexadecimal characters.
-/// The zero default does not provide a fresh challenge.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// Text challenges use a domain-separated digest. The default hashes empty text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct Nonce([u8; 32]);
+
+impl Nonce {
+    /// Hash `greenhold/nonce/v1\0` followed by the exact UTF-8 bytes.
+    /// Preserve whitespace and case. Empty text does not provide a fresh challenge.
+    #[must_use]
+    pub fn from_text(text: &str) -> Self {
+        let mut engine = sha256::Hash::engine();
+        engine.input(b"greenhold/nonce/v1\0");
+        engine.input(text.as_bytes());
+        Self(sha256::Hash::from_engine(engine).to_byte_array())
+    }
+}
+
+impl Default for Nonce {
+    fn default() -> Self {
+        Self::from_text("")
+    }
+}
 
 impl FromStr for Nonce {
     type Err = anyhow::Error;

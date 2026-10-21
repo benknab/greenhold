@@ -65,7 +65,7 @@ fn run(cli: cli::Cli) -> Result<()> {
         cli::Command::Verify(options) => {
             let receipt = receipt::read(&options.receipt)?;
             let rpc = options.connections.rpc_config()?;
-            let claim = verify::claim(&receipt, options.network, &rpc)?;
+            let claim = verify::claim(&receipt, options.network, options.nonce, &rpc)?;
             Report::new(&claim, Status::Verified).print(cli.json)?;
         }
         cli::Command::Inspect(options) => {
