@@ -17,7 +17,6 @@ fn claim_and_prove_explain_the_prepared_signing_flow() -> Result<()> {
             vec![
                 "--outpoint <OUTPOINT>",
                 "--first-height <HEIGHT>",
-                "--last-height <HEIGHT>",
                 "tip-only",
                 "--minimum-sats <SATS>",
                 "--witness <FILE>",
@@ -40,11 +39,42 @@ fn claim_and_prove_explain_the_prepared_signing_flow() -> Result<()> {
         assert!(output.status.success());
         let help = String::from_utf8(output.stdout)?;
         assert!(help.contains("--json"), "{help}");
+        assert!(!help.contains("--last-height"), "{help}");
         assert!(!help.contains("--claim-file"), "{help}");
         for text in required {
             assert!(help.contains(text), "{help}");
         }
     }
+    Ok(())
+}
+
+#[test]
+fn claim_rejects_the_removed_last_height_option() -> Result<()> {
+    let directory = tempfile::tempdir()?;
+    let witness = directory.path().join("coin.witness");
+    let claim = directory.path().join("coin.claim");
+    let output = Command::new(env!("CARGO_BIN_EXE_greenhold-host"))
+        .args([
+            "claim",
+            "--outpoint",
+            "1111111111111111111111111111111111111111111111111111111111111111:0",
+            "--last-height",
+            "200",
+            "--witness",
+        ])
+        .arg(&witness)
+        .arg("--output")
+        .arg(&claim)
+        .output()?;
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    let stderr = String::from_utf8(output.stderr)?;
+    assert!(
+        stderr.contains("unexpected argument '--last-height'"),
+        "{stderr}"
+    );
+    assert!(!witness.exists());
+    assert!(!claim.exists());
     Ok(())
 }
 

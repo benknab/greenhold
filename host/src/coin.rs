@@ -5,13 +5,15 @@ use greenhold_core::{
     coin::{Coin, CoinWitness},
     context::ChainContext,
     eligibility::{EligibleCoin, MinimumAmount},
+    network::SupportedNetwork,
 };
 
 /// Fetch a tip proof before its exact public context. The proof's block hash is a
 /// lookup input; the node supplies and checks the context on this run.
 pub fn fetch(
     outpoint: OutPoint,
-    input: context::Input,
+    network: SupportedNetwork,
+    first: Option<u32>,
     minimum: MinimumAmount,
     config: &utreexod_rpc::Config,
 ) -> Result<(ChainContext, EligibleCoin)> {
@@ -44,7 +46,7 @@ pub fn fetch(
     )?;
     let proved_at = proof.proved_at_hash;
     let witness = bind(coin, proof)?;
-    let context = context::fetch_at(input, config, proved_at)?;
+    let context = context::fetch_at(network, first, config, proved_at)?;
     let coin = EligibleCoin::new(witness, &context, minimum)?;
     Ok((context, coin))
 }

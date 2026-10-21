@@ -35,8 +35,6 @@ fn prepared_claim_survives_signing_delay_and_spending_but_not_a_reorg() -> Resul
             claim,
             "--outpoint",
             &input,
-            "--last-height",
-            "433",
             "--first-height",
             "433",
             "--minimum-sats",
@@ -143,15 +141,6 @@ fn assert_new_claim_uses_tip(node: &Node, input: &str, directory: &Path) -> Resu
         "--output",
         claim.to_str().context("path")?,
     ];
-    rejection(
-        &command(
-            node,
-            "regtest",
-            "claim",
-            &[base.as_slice(), &["--last-height", "433"]].concat(),
-        )?,
-        "proof block height does not match requested last height",
-    );
     for (extra, first) in [
         (vec!["--json"], 434),
         (vec!["--json", "--first-height", "433"], 433),
@@ -287,6 +276,10 @@ fn assert_preparation_rejects_ineligible(
         (
             vec!["--outpoint", outpoint.as_str(), "--first-height", "432"],
             "cutoff",
+        ),
+        (
+            vec!["--outpoint", outpoint.as_str(), "--first-height", "434"],
+            "first height must not exceed last height",
         ),
         (
             vec!["--outpoint", young.as_str()],

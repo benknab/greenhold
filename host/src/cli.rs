@@ -151,11 +151,7 @@ pub struct ContextOptions {
     #[arg(long, default_value = "bitcoin")]
     pub network: SupportedNetwork,
 
-    /// Last block height T. Defaults to the tip proof's block.
-    #[arg(long, value_name = "HEIGHT")]
-    pub last_height: Option<u32>,
-
-    /// First block height X. Defaults to T for a single-block context.
+    /// First block height X. Defaults to the tip proof's block height T.
     #[arg(long, value_name = "HEIGHT")]
     pub first_height: Option<u32>,
 

@@ -101,7 +101,8 @@ fn run(
     });
     let result = fetch(
         outpoint,
-        context::Input::new(Network::Regtest, None, None)?,
+        Network::Regtest.try_into()?,
+        None,
         MinimumAmount::try_from(minimum)?,
         &config,
     );

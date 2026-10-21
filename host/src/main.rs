@@ -89,13 +89,14 @@ fn prepare(options: &cli::ClaimOptions, json: bool) -> Result<()> {
     if options.output == options.witness {
         bail!("claim and witness must use different output files");
     }
-    let input = context::Input::new(
-        options.context.network.into(),
-        options.context.first_height,
-        options.context.last_height,
-    )?;
     let rpc = options.context.connections.rpc_config()?;
-    let (context, coin) = coin::fetch(options.outpoint, input, options.minimum_sats, &rpc)?;
+    let (context, coin) = coin::fetch(
+        options.outpoint,
+        options.context.network,
+        options.context.first_height,
+        options.minimum_sats,
+        &rpc,
+    )?;
     check_script(&coin.witness().coin().output().script_pubkey)?;
     let address = bitcoin::Address::from_script(
         &coin.witness().coin().output().script_pubkey,

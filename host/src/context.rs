@@ -36,12 +36,18 @@ pub fn fetch(input: Input, config: &utreexod_rpc::Config) -> Result<ChainContext
 
 /// Retrieve context for an exact proof block, treating its hash only as a lookup input.
 /// The node supplies its height, header, and roots. Later tip changes do not replace it.
-/// An explicit last height must agree; an omitted first height defaults to this block.
+/// An omitted first height defaults to this block.
 pub fn fetch_at(
-    input: Input,
+    network: SupportedNetwork,
+    first: Option<u32>,
     config: &utreexod_rpc::Config,
     block: BlockHash,
 ) -> Result<ChainContext> {
+    let input = Input {
+        network,
+        first,
+        last: None,
+    };
     fetch_selected(input, config, Some(block))
 }
 
@@ -60,7 +66,7 @@ fn fetch_selected(
     }
     // Never replace a selected block with a later tip during retrieval.
     let (last_height, pinned) = if let Some(hash) = selected {
-        let block = selected_endpoint(&mut rpc, input, hash)?;
+        let block = selected_endpoint(&mut rpc, input.network, hash)?;
         (block.height(), Some(block))
     } else if let Some(height) = input.last {
         (height, None)
@@ -108,7 +114,7 @@ fn fetch_selected(
 
 fn selected_endpoint(
     rpc: &mut utreexod_rpc::Client<'_>,
-    input: Input,
+    network: SupportedNetwork,
     hash: BlockHash,
 ) -> Result<BlockEndpoint> {
     let utreexod_rpc::BlockHeaderResponse::Verbose(location) = rpc.block_header(&hash, true)?
@@ -118,14 +124,7 @@ fn selected_endpoint(
     if location.hash != hash {
         bail!("RPC block location does not match requested hash");
     }
-    if input.last.is_some_and(|height| height != location.height) {
-        bail!("proof block height does not match requested last height");
-    }
-    BlockEndpoint::new(
-        input.network.into(),
-        location.height,
-        block_header(rpc, &hash)?,
-    )
+    BlockEndpoint::new(network.into(), location.height, block_header(rpc, &hash)?)
 }
 
 fn endpoint_block(
