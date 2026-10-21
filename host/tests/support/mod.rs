@@ -1,5 +1,4 @@
 use anyhow::{Context, Result, bail};
-use base64::{Engine as _, engine::general_purpose::STANDARD};
 use bitcoin::{
     BlockHash,
     hashes::{Hash, sha256},
@@ -7,7 +6,9 @@ use bitcoin::{
 };
 use serde_json::{Value, json};
 use std::{
+    fs,
     io::{Read as _, Seek as _},
+    path::Path,
     process::{Command, Output},
     thread,
     time::{Duration, Instant},
@@ -28,8 +29,8 @@ pub const WALLET_ADDRESS: &str = "bcrt1q7f0pjwhc3jzzv0w4uurm589506glv2dggfan4s";
 pub const WALLET_PATH: &str = "m/84'/1'/0'/0/0";
 pub const WALLET_SEED: [u8; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 /// Sign canonical bytes, independently deriving the message from their hash.
-pub fn sign_claim(report: &Value) -> Result<String> {
-    let encoded = STANDARD.decode(report["encoded"].as_str().context("claim bytes")?)?;
+pub fn sign_claim(report: &Value, path: &Path) -> Result<String> {
+    let encoded = fs::read(path)?;
     let message = format!("greenhold/claim:{}", sha256::Hash::hash(&encoded));
     assert_eq!(report["message"], message);
     let key = greenhold_signer::derive_key(&WALLET_SEED, &WALLET_PATH.parse()?)?;
@@ -179,7 +180,7 @@ pub fn context_digest(node: &Node, first: u32, last: u32) -> Result<String> {
 /// Run `inspect`, which takes no network or node flags.
 pub fn inspect(receipt: &str) -> Result<Output> {
     Ok(Command::new(env!("CARGO_BIN_EXE_greenhold-host"))
-        .args(["inspect", "--receipt", receipt])
+        .args(["inspect", "--receipt", receipt, "--json"])
         .output()?)
 }
 

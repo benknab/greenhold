@@ -4,7 +4,6 @@ use crate::support::{
     transactions::{broadcast, mined, spend_signed},
 };
 use anyhow::{Context, Result};
-use base64::{Engine as _, engine::general_purpose::STANDARD};
 use bitcoin::{Address, Amount, Network, OutPoint, Transaction};
 use greenhold_core::claim::Claim;
 use greenhold_guest_builder::GREENHOLD_GUEST_ID;
@@ -21,14 +20,19 @@ fn prepared_claim_survives_signing_delay_and_spending_but_not_a_reorg() -> Resul
     let input = OutPoint::new(funding.compute_txid(), 0).to_string();
     let directory = tempfile::tempdir()?;
     let witness_path = directory.path().join("coin.witness");
+    let claim_path = directory.path().join("coin.claim");
     let receipt_path = directory.path().join("claim.receipt");
     let witness = witness_path.to_str().context("witness path")?;
+    let claim = claim_path.to_str().context("claim path")?;
     let receipt = receipt_path.to_str().context("receipt path")?;
     let report = success(&command(
         &node,
         "regtest",
         "claim",
         &[
+            "--json",
+            "--output",
+            claim,
             "--outpoint",
             &input,
             "--last-height",
@@ -42,16 +46,17 @@ fn prepared_claim_survives_signing_delay_and_spending_but_not_a_reorg() -> Resul
         ],
     )?)?;
     assert_claim(&node, &report, 433, 433, 2_000_000_000)?;
-    let claim = report["encoded"].as_str().context("encoded claim")?;
+    assert_claim_file(&claim_path, &report)?;
     assert_preparation_rejects_ineligible(&node, &address, &funding, directory.path())?;
 
     // Sign after advancing the tip. No fresh proof for the frozen T can be fetched.
     node.rpc("generate", &json!([1]))?;
-    let signature = sign_claim(&report)?;
+    let signature = sign_claim(&report, &claim_path)?;
     let dry_run = || prove_dry(&node, claim, witness, &signature);
     let executed = success(&dry_run()?)?;
     assert_eq!(executed["claim"], report["claim"]);
-    assert_tip_only(&node, &input, directory.path())?;
+    assert_new_claim_uses_tip(&node, &input, directory.path())?;
+    assert_human_dry_run(&node, claim, witness, &signature, &report)?;
 
     // Spend after T, then prove from the saved witness after the spend is confirmed.
     broadcast(
@@ -73,6 +78,7 @@ fn prepared_claim_survives_signing_delay_and_spending_but_not_a_reorg() -> Resul
         "regtest",
         "prove",
         &[
+            "--json",
             "--claim",
             claim,
             "--witness",
@@ -84,38 +90,22 @@ fn prepared_claim_survives_signing_delay_and_spending_but_not_a_reorg() -> Resul
         ],
         Duration::from_mins(10),
     )?)?;
-    assert_receipt(&proved, &fs::read(receipt)?)?;
+    assert_receipt(&proved, &fs::read(receipt)?, &fs::read(claim)?)?;
     assert!(proved.get("cycles").is_none());
-    let accepted = json!({"claim": report["claim"], "encoded": report["encoded"],
+    let accepted = json!({"claim": report["claim"],
         "message": report["message"], "image_id": report["image_id"]});
-    for _ in 0..2 {
-        assert_eq!(
-            success(&command(
-                &node,
-                "regtest",
-                "verify",
-                &["--receipt", receipt, "--claim", claim]
-            )?)?,
-            accepted
-        );
-    }
-    assert_eq!(success(&inspect(receipt)?)?, accepted);
+    assert_verified_reports(&node, receipt, claim, &accepted)?;
     assert_verify_fails_closed(&node, &receipt_path, claim)?;
 
     // A completed reorg across T invalidates chain acceptance, not the proof seal.
     node.rpc("invalidateblock", &json!([report["claim"]["last"]["hash"]]))?;
     node.rpc("generate", &json!([4]))?;
     rejection(
-        &command(
-            &node,
-            "regtest",
-            "verify",
-            &["--receipt", receipt, "--claim", claim],
-        )?,
+        &command(&node, "regtest", "verify", &["--receipt", receipt])?,
         "claim does not match the node's chain state",
     );
     rejection(&dry_run()?, "claim does not match the node's chain state");
-    assert_eq!(success(&inspect(receipt)?)?, accepted);
+    assert_public_report(&success(&inspect(receipt)?)?, &accepted);
     Ok(())
 }
 
@@ -130,6 +120,7 @@ fn prove_dry(
         "regtest",
         "prove",
         &[
+            "--json",
             "--claim",
             claim,
             "--witness",
@@ -141,24 +132,134 @@ fn prove_dry(
     )
 }
 
-fn assert_tip_only(node: &Node, input: &str, directory: &Path) -> Result<()> {
+fn assert_new_claim_uses_tip(node: &Node, input: &str, directory: &Path) -> Result<()> {
     let witness = directory.join("later.witness");
+    let claim = directory.join("later.claim");
+    let base = [
+        "--outpoint",
+        input,
+        "--witness",
+        witness.to_str().context("path")?,
+        "--output",
+        claim.to_str().context("path")?,
+    ];
     rejection(
         &command(
             node,
             "regtest",
             "claim",
-            &[
-                "--outpoint",
-                input,
-                "--last-height",
-                "433",
-                "--witness",
-                witness.to_str().context("path")?,
-            ],
+            &[base.as_slice(), &["--last-height", "433"]].concat(),
         )?,
         "proof block height does not match requested last height",
     );
+    for (extra, first) in [
+        (vec!["--json"], 434),
+        (vec!["--json", "--first-height", "433"], 433),
+    ] {
+        let report = success(&command(
+            node,
+            "regtest",
+            "claim",
+            &[base.as_slice(), extra.as_slice()].concat(),
+        )?)?;
+        assert_claim(node, &report, first, 434, 1)?;
+        assert_claim_file(&claim, &report)?;
+        assert!(witness.exists());
+    }
+    let output = command(node, "regtest", "claim", &base)?;
+    let bytes = fs::read(&claim)?;
+    let parsed = Claim::try_from(bytes.as_slice())?;
+    assert_eq!(parsed.first_height(), 434);
+    assert_human_report(&output, &json!({"claim": parsed}))?;
+    assert!(std::str::from_utf8(&output.stdout)?.contains(&parsed.signing_message()));
+    Ok(())
+}
+
+fn assert_human_report(output: &std::process::Output, report: &Value) -> Result<()> {
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let text = std::str::from_utf8(&output.stdout)?;
+    assert!(serde_json::from_str::<Value>(text).is_err(), "{text}");
+    assert!(text.contains("regtest"), "{text}");
+    for (label, value) in [
+        ("Minimum amount", &report["claim"]["minimum_sats"]),
+        ("First height", &report["claim"]["first"]["height"]),
+        ("Last height", &report["claim"]["last"]["height"]),
+    ] {
+        assert!(text.contains(&format!("{label}: {value}")), "{text}");
+    }
+    Ok(())
+}
+
+fn assert_human_dry_run(
+    node: &Node,
+    claim: &str,
+    witness: &str,
+    signature: &str,
+    report: &Value,
+) -> Result<()> {
+    let output = command(
+        node,
+        "regtest",
+        "prove",
+        &[
+            "--claim",
+            claim,
+            "--witness",
+            witness,
+            "--signature",
+            signature,
+            "--dry-run",
+        ],
+    )?;
+    assert_human_report(&output, report)
+}
+
+fn assert_verified_reports(
+    node: &Node,
+    receipt: &str,
+    claim: &str,
+    expected: &Value,
+) -> Result<()> {
+    for extra in [vec!["--claim", claim], vec![]] {
+        let report = success(&command(
+            node,
+            "regtest",
+            "verify",
+            &[&["--json", "--receipt", receipt], extra.as_slice()].concat(),
+        )?)?;
+        assert_public_report(&report, expected);
+        assert_eq!(report["expected_claim_checked"], !extra.is_empty());
+    }
+    assert_public_report(&success(&inspect(receipt)?)?, expected);
+    assert_human_report(
+        &command(node, "regtest", "verify", &["--receipt", receipt])?,
+        expected,
+    )?;
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_greenhold-host"))
+        .args(["inspect", "--receipt", receipt])
+        .output()?;
+    assert_human_report(&output, expected)
+}
+
+fn assert_public_report(actual: &Value, expected: &Value) {
+    for field in ["claim", "message", "image_id"] {
+        assert_eq!(actual[field], expected[field], "{field}");
+    }
+    assert!(actual.get("encoded").is_none());
+}
+
+fn assert_claim_file(path: &Path, report: &Value) -> Result<()> {
+    let bytes = fs::read(path)?;
+    assert_eq!(bytes.len(), 163);
+    assert!(bytes.starts_with(b"greenhold/claim/v1\0"));
+    let claim = Claim::try_from(bytes.as_slice())?;
+    assert_eq!(serde_json::to_value(&claim)?, report["claim"]);
+    assert_eq!(claim.signing_message(), report["message"]);
+    assert!(report.get("encoded").is_none());
     Ok(())
 }
 
@@ -169,6 +270,7 @@ fn assert_preparation_rejects_ineligible(
     directory: &Path,
 ) -> Result<()> {
     let witness = directory.join("rejected.witness");
+    let claim = directory.join("rejected.claim");
     let outpoint = OutPoint::new(funding.compute_txid(), 0).to_string();
     let young = mined(node, 335, &address.script_pubkey())?.to_string();
     let missing = OutPoint::new(funding.compute_txid(), 99).to_string();
@@ -202,13 +304,19 @@ fn assert_preparation_rejects_ineligible(
                 "claim",
                 &[
                     args.as_slice(),
-                    &["--witness", witness.to_str().context("path")?],
+                    &[
+                        "--witness",
+                        witness.to_str().context("path")?,
+                        "--output",
+                        claim.to_str().context("path")?,
+                    ],
                 ]
                 .concat(),
             )?,
             reason,
         );
         assert!(!witness.exists());
+        assert!(!claim.exists());
     }
     Ok(())
 }
@@ -241,15 +349,17 @@ fn funded_node() -> Result<(Node, Address, Transaction)> {
 fn assert_verify_fails_closed(node: &Node, path: &Path, claim: &str) -> Result<()> {
     let receipt = path.to_str().context("receipt path")?;
     // A real proof for C must not satisfy even a weaker but otherwise valid C-prime.
-    let mut changed = STANDARD.decode(claim)?;
+    let mut changed = fs::read(claim)?;
     changed[123..131].copy_from_slice(&1_u64.to_le_bytes());
+    let expected = path.with_file_name("different.claim");
+    fs::write(&expected, changed)?;
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_greenhold-host"))
         .args([
             "verify",
             "--receipt",
             receipt,
             "--claim",
-            &STANDARD.encode(changed),
+            expected.to_str().context("expected claim path")?,
             "--network",
             "regtest",
             "--utreexod-rpc",
@@ -320,15 +430,12 @@ fn assert_verify_fails_closed(node: &Node, path: &Path, claim: &str) -> Result<(
     Ok(())
 }
 
-fn assert_receipt(report: &Value, file: &[u8]) -> Result<()> {
+fn assert_receipt(report: &Value, file: &[u8], claim: &[u8]) -> Result<()> {
     assert_eq!(report["receipt_bytes"], file.len());
     let receipt: Receipt = bincode::deserialize(file.strip_prefix(TAG).context("receipt tag")?)?;
     assert!(matches!(receipt.inner, InnerReceipt::Succinct(_)));
     receipt.verify(GREENHOLD_GUEST_ID)?;
-    assert_eq!(
-        receipt.journal.bytes,
-        STANDARD.decode(report["encoded"].as_str().context("encoded claim")?)?
-    );
+    assert_eq!(receipt.journal.bytes, claim);
     Ok(())
 }
 
@@ -346,13 +453,6 @@ fn assert_claim(node: &Node, report: &Value, first: u32, last: u32, minimum: u64
         report["image_id"],
         Digest::from(GREENHOLD_GUEST_ID).to_string()
     );
-    let text = report["encoded"].as_str().context("encoded claim")?;
-    assert_eq!(text.len(), 220);
-    let encoded = STANDARD.decode(text)?;
-    assert_eq!(encoded.len(), 163);
-    assert_eq!(
-        &serde_json::to_value(Claim::try_from(encoded.as_slice())?)?,
-        claim
-    );
+    assert!(report.get("encoded").is_none());
     Ok(())
 }

@@ -3,22 +3,22 @@ use anyhow::{Result, bail};
 use greenhold_core::{claim::Claim, network::SupportedNetwork};
 use risc0_zkvm::Receipt;
 
-/// Accept a receipt only for the independently expected claim and this node's chain state.
+/// Check the receipt's claim against this node and an optional independent expectation.
 /// The claim's heights are lookup inputs. Its hashes and digest are only compared.
 pub fn claim(
     receipt: &Receipt,
     network: SupportedNetwork,
-    expected: &Claim,
+    expected: Option<&Claim>,
     rpc: &utreexod_rpc::Config,
 ) -> Result<Claim> {
     let claim = guest::verify(receipt)?;
     if claim.network() != network {
         bail!("receipt claims {}, not {network}", claim.network());
     }
-    if &claim != expected {
+    if expected.is_some_and(|expected| &claim != expected) {
         bail!("receipt does not match the expected claim");
     }
-    context(expected, rpc)?;
+    context(&claim, rpc)?;
     Ok(claim)
 }
 

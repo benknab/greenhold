@@ -5,6 +5,7 @@ mod connection;
 mod context;
 mod discover;
 mod guest;
+mod output;
 mod receipt;
 mod verify;
 
@@ -19,6 +20,7 @@ use greenhold_core::{
     input::ClaimInput,
     verification::{check_script, verify_signature},
 };
+use output::{Report, Status};
 use std::{fs, process::ExitCode};
 
 fn main() -> ExitCode {
@@ -45,49 +47,71 @@ fn run(cli: cli::Cli) -> Result<()> {
                 let rpc = options.connections.rpc_config()?;
                 discover::outpoints(&address, network, &rpc)?
             };
-            for outpoint in outpoints {
-                println!("{outpoint}");
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&outpoints)?);
+            } else {
+                for outpoint in outpoints {
+                    println!("{outpoint}");
+                }
             }
         }
-        cli::Command::Claim(options) => prepare(&options)?,
-        cli::Command::Prove(options) => prove(options)?,
+        cli::Command::Claim(options) => prepare(&options, cli.json)?,
+        cli::Command::Prove(options) => prove(options, cli.json)?,
         cli::Command::Verify(options) => {
             let receipt = receipt::read(&options.receipt)?;
-            let expected = artifacts::decode_claim(&options.claim)?;
+            let expected = options
+                .claim
+                .as_deref()
+                .map(artifacts::read_claim)
+                .transpose()?;
             let rpc = options.connections.rpc_config()?;
-            let claim = verify::claim(&receipt, options.network, &expected, &rpc)?;
-            println!("{}", serde_json::to_string_pretty(&report(&claim))?);
+            let claim = verify::claim(&receipt, options.network, expected.as_ref(), &rpc)?;
+            let mut report = Report::new(&claim, Status::Verified);
+            report.expected_claim_checked = Some(expected.is_some());
+            report.print(cli.json)?;
         }
         cli::Command::Inspect(options) => {
             let claim = guest::verify(&receipt::read(&options.receipt)?)?;
             eprintln!(
                 "Proof checked. Expected claim and chain state not checked: use verify to accept the claim."
             );
-            println!("{}", serde_json::to_string_pretty(&report(&claim))?);
+            Report::new(&claim, Status::Inspected).print(cli.json)?;
         }
     }
     Ok(())
 }
 
-fn prepare(options: &cli::ClaimOptions) -> Result<()> {
-    let network = options.context.network.into();
+fn prepare(options: &cli::ClaimOptions, json: bool) -> Result<()> {
+    if options.output == options.witness {
+        bail!("claim and witness must use different output files");
+    }
     let input = context::Input::new(
-        network,
+        options.context.network.into(),
         options.context.first_height,
         options.context.last_height,
     )?;
     let rpc = options.context.connections.rpc_config()?;
     let (context, coin) = coin::fetch(options.outpoint, input, options.minimum_sats, &rpc)?;
     check_script(&coin.witness().coin().output().script_pubkey)?;
+    let address = bitcoin::Address::from_script(
+        &coin.witness().coin().output().script_pubkey,
+        bitcoin::Network::from(options.context.network),
+    )?;
     let claim = Claim::new(&context, options.minimum_sats);
     let witness = artifacts::encode_witness(coin.witness())?;
     fs::write(&options.witness, witness).context("cannot write witness")?;
-    println!("{}", serde_json::to_string_pretty(&report(&claim))?);
+    fs::write(&options.output, artifacts::encode_claim(&claim))
+        .context("cannot write claim file")?;
+    let mut report = Report::new(&claim, Status::Prepared);
+    report.claim_file = Some(&options.output);
+    report.witness = Some(&options.witness);
+    report.address = Some(address);
+    report.print(json)?;
     Ok(())
 }
 
-fn prove(options: cli::ProveOptions) -> Result<()> {
-    let claim = artifacts::decode_claim(&options.claim)?;
+fn prove(options: cli::ProveOptions, json: bool) -> Result<()> {
+    let claim = artifacts::read_claim(&options.claim)?;
     if claim.network() != options.network {
         bail!("claim names {}, not {}", claim.network(), options.network);
     }
@@ -110,28 +134,19 @@ fn prove(options: cli::ProveOptions) -> Result<()> {
     );
     // Execution is fast, so a rejected input fails before the slow proving step.
     let cycles = guest::execute(&input, &claim)?;
-    let mut report = report(&claim);
-    if let Some(path) = options.output {
+    let mut report = Report::new(&claim, Status::Executed);
+    if let Some(path) = &options.output {
         let bytes = receipt::encode(&guest::prove(&input, &claim)?)?;
-        fs::write(&path, &bytes)
+        fs::write(path, &bytes)
             .with_context(|| format!("cannot write receipt to {}", path.display()))?;
-        report["receipt"] = path.display().to_string().into();
-        report["receipt_bytes"] = bytes.len().into();
+        report = Report::new(&claim, Status::Proved);
+        report.receipt = Some(path);
+        report.receipt_bytes = Some(bytes.len());
     } else {
         // The cycle count depends on the private coin. Only a dry run, which makes
         // no receipt to share, reports it.
-        report["cycles"] = cycles.into();
+        report.cycles = Some(cycles);
     }
-    println!("{}", serde_json::to_string_pretty(&report)?);
+    report.print(json)?;
     Ok(())
-}
-
-/// The public claim in JSON and Base64, and the guest that commits it.
-fn report(claim: &Claim) -> serde_json::Value {
-    serde_json::json!({
-        "claim": claim,
-        "encoded": artifacts::encode_claim(claim),
-        "message": claim.signing_message(),
-        "image_id": guest::image_id().to_string(),
-    })
 }

@@ -1,5 +1,4 @@
 use anyhow::Result;
-use base64::{Engine as _, engine::general_purpose::STANDARD};
 use greenhold_core::coin::CoinWitness;
 use greenhold_signer::{Format, ScriptType};
 use std::{fs, process::Command};
@@ -17,27 +16,31 @@ fn claim_and_prove_explain_the_prepared_signing_flow() -> Result<()> {
             "claim",
             vec![
                 "--outpoint <OUTPOINT>",
+                "--first-height <HEIGHT>",
                 "--last-height <HEIGHT>",
                 "tip-only",
                 "--minimum-sats <SATS>",
                 "--witness <FILE>",
+                "--output <FILE>",
             ],
         ),
         (
             "prove",
             vec![
-                "--claim <BASE64>",
+                "--claim <FILE>",
                 "--witness <FILE>",
                 "--signature <SIGNATURE>",
                 "--dry-run",
             ],
         ),
-        ("verify", vec!["--receipt <FILE>", "--claim <BASE64>"]),
+        ("verify", vec!["--receipt <FILE>", "--claim <FILE>"]),
         ("inspect", vec!["--receipt <FILE>"]),
     ] {
         let output = Command::new(binary).args([command, "--help"]).output()?;
         assert!(output.status.success());
         let help = String::from_utf8(output.stdout)?;
+        assert!(help.contains("--json"), "{help}");
+        assert!(!help.contains("--claim-file"), "{help}");
         for text in required {
             assert!(help.contains(text), "{help}");
         }
@@ -52,6 +55,7 @@ fn prove_checks_the_claim_signature_before_node_access() -> Result<()> {
     let witness: CoinWitness = serde_json::from_value(input["witness"].clone())?;
     let directory = tempfile::tempdir()?;
     let witness_path = directory.path().join("coin.witness");
+    let claim_path = directory.path().join("coin.claim");
     fs::write(&witness_path, artifacts::encode_witness(&witness)?)?;
     let signature = input["signature"]
         .as_str()
@@ -76,10 +80,11 @@ fn prove_checks_the_claim_signature_before_node_access() -> Result<()> {
         if changed {
             bytes[123] ^= 1;
         } // A different valid M.
+        fs::write(&claim_path, bytes)?;
         let output = Command::new(env!("CARGO_BIN_EXE_greenhold-host"))
             .arg("prove")
             .arg("--claim")
-            .arg(STANDARD.encode(bytes))
+            .arg(&claim_path)
             .arg("--witness")
             .arg(&witness_path)
             .args([
@@ -128,25 +133,65 @@ fn artifacts_reject_invalid_versions_trailing_bytes_and_oversize_files() -> Resu
         assert!(artifacts::read_witness(&path).is_err());
     }
     let encoded = artifacts::encode_claim(&claim);
-    assert_eq!(encoded.len(), 220);
-    assert_eq!(STANDARD.decode(&encoded)?, claim.to_bytes());
-    assert_eq!(artifacts::decode_claim(&encoded)?, claim);
+    assert_eq!(encoded.len(), 163);
+    assert_eq!(encoded, claim.to_bytes());
+    fs::write(&path, &encoded)?;
+    assert_eq!(artifacts::read_claim(&path)?, claim);
     for bytes in [
         claim.to_bytes()[..162].to_vec(),
         [claim.to_bytes(), vec![0]].concat(),
         [claim.to_bytes(), vec![0; 32]].concat(),
         vec![0; 163],
+        b"greenhold/claim/v2\0".to_vec(),
+        serde_json::to_vec(&claim)?,
     ] {
-        assert!(artifacts::decode_claim(&STANDARD.encode(bytes)).is_err());
+        fs::write(&path, bytes)?;
+        assert!(artifacts::read_claim(&path).is_err());
     }
-    for invalid in [
-        "claim.bin".to_owned(),
-        encoded.trim_end_matches('=').to_owned(),
-        format!("{encoded}\n"),
-        "!".repeat(220),
-        format!("{}B==", &encoded[..217]), // Nonzero padding bits.
+    Ok(())
+}
+
+#[test]
+fn prove_rejects_malformed_claim_files_before_witness_or_node_access() -> Result<()> {
+    let directory = tempfile::tempdir()?;
+    let claim = directory.path().join("coin.claim");
+    for (contents, reason) in [
+        (None, "cannot read claim"),
+        (
+            Some(b"greenhold/claim/v2\0".as_slice()),
+            "claim tag or version is not supported",
+        ),
+        (
+            Some(b"greenhold/claim/v1\0".as_slice()),
+            "claim is truncated",
+        ),
     ] {
-        assert!(artifacts::decode_claim(&invalid).is_err());
+        if let Some(contents) = contents {
+            fs::write(&claim, contents)?;
+        }
+        let output = Command::new(env!("CARGO_BIN_EXE_greenhold-host"))
+            .args(["prove", "--claim"])
+            .arg(&claim)
+            .args([
+                "--witness",
+                "missing.witness",
+                "--signature",
+                "smpAA==",
+                "--dry-run",
+                "--utreexod-rpc",
+                "http://127.0.0.1:9/",
+                "--utreexod-rpc-user",
+                "test",
+                "--utreexod-rpc-password",
+                "test",
+            ])
+            .output()?;
+        assert_eq!(output.status.code(), Some(1));
+        assert!(output.stdout.is_empty());
+        let stderr = String::from_utf8(output.stderr)?;
+        assert!(stderr.contains(reason), "{stderr}");
+        assert!(!stderr.contains("cannot read witness"), "{stderr}");
+        assert!(!stderr.contains("RPC transport failed"), "{stderr}");
     }
     Ok(())
 }

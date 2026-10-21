@@ -17,6 +17,10 @@ pub const DEFAULT_ELECTRUM: &str = "tls://electrum.hospitablealpaca.com:50002";
     arg_required_else_help = true
 )]
 pub struct Cli {
+    /// Print structured JSON instead of human-readable output.
+    #[arg(long, global = true)]
+    pub json: bool,
+
     #[command(subcommand)]
     pub command: Command,
 }
@@ -29,7 +33,7 @@ pub enum Command {
     Claim(ClaimOptions),
     /// Prove a prepared claim using its saved witness and signature.
     Prove(ProveOptions),
-    /// Verify a receipt against the expected claim and the node's chain state.
+    /// Verify a receipt and its claim against the node's chain state.
     Verify(VerifyOptions),
     /// Check a receipt's proof and print its claim, without node access or chain checks.
     Inspect(InspectOptions),
@@ -70,9 +74,9 @@ pub struct VerifyOptions {
     #[arg(long, value_name = "FILE")]
     pub receipt: PathBuf,
 
-    /// Independently approved claim as standard padded Base64.
-    #[arg(long, value_name = "BASE64")]
-    pub claim: String,
+    /// Optional independently expected claim file. Requires an exact match.
+    #[arg(long, value_name = "FILE")]
+    pub claim: Option<PathBuf>,
 
     /// Bitcoin network the claim must name: bitcoin, signet, or regtest.
     #[arg(long, default_value = "bitcoin")]
@@ -91,9 +95,9 @@ pub struct InspectOptions {
 
 #[derive(Debug, Args)]
 pub struct ProveOptions {
-    /// Standard padded Base64 claim from the claim command's encoded field.
-    #[arg(long, value_name = "BASE64")]
-    pub claim: String,
+    /// Public claim file written by claim --output.
+    #[arg(long, value_name = "FILE")]
+    pub claim: PathBuf,
 
     /// Private coin witness captured with the claim.
     #[arg(long, value_name = "FILE")]
@@ -128,6 +132,10 @@ pub struct ClaimOptions {
     /// Minimum coin value M in satoshis, up to 2100000000000000.
     #[arg(long, value_name = "SATS", default_value = "1")]
     pub minimum_sats: MinimumAmount,
+
+    /// Public claim file to write. Replaces an existing file.
+    #[arg(long, value_name = "FILE")]
+    pub output: PathBuf,
 
     /// Private coin witness file to write. Replaces an existing file.
     #[arg(long, value_name = "FILE")]

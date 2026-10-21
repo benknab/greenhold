@@ -13,14 +13,14 @@ const SIGNED: [&str; 4] = [
 
 /// Parse prove arguments after its claim and witness/signature flags.
 fn prove(args: &[&str]) -> clap::error::Result<Cli> {
-    let args = ["host", "prove", "--claim", "BASE64"]
+    let args = ["host", "prove", "--claim", "coin.claim"]
         .into_iter()
         .chain(SIGNED)
         .chain(args.iter().copied());
     Cli::try_parse_from(args)
 }
 
-/// Parse claim arguments after its required witness path.
+/// Parse claim arguments after its required output paths.
 fn cli(args: &[&str]) -> clap::error::Result<Cli> {
     Cli::try_parse_from(
         [
@@ -30,6 +30,8 @@ fn cli(args: &[&str]) -> clap::error::Result<Cli> {
             OUTPOINT,
             "--witness",
             "coin.witness",
+            "--output",
+            "coin.claim",
         ]
         .into_iter()
         .chain(args.iter().copied()),
@@ -155,6 +157,7 @@ fn prove_needs_exactly_one_of_output_and_dry_run() -> Result<()> {
         bail!("expected prove command");
     };
     assert_eq!(options.output, Some(PathBuf::from("claim.receipt")));
+    assert_eq!(options.claim, PathBuf::from("coin.claim"));
     let Command::Prove(options) = prove(&["--dry-run"])?.command else {
         bail!("expected prove command");
     };
@@ -176,7 +179,7 @@ fn prove_needs_exactly_one_of_output_and_dry_run() -> Result<()> {
 fn prove_needs_a_witness_and_well_formed_signature() -> Result<()> {
     // Replace or drop one flag of SIGNED, then parse a dry run.
     let parse = |flag: &str, value: Option<&str>| -> Result<clap::error::ErrorKind> {
-        let mut args = vec!["host", "prove", "--claim", "BASE64", "--dry-run"];
+        let mut args = vec!["host", "prove", "--claim", "coin.claim", "--dry-run"];
         for pair in SIGNED.chunks(2) {
             match (pair, value) {
                 ([name, _], Some(value)) if *name == flag => args.extend([flag, value]),
@@ -203,27 +206,68 @@ fn prove_needs_a_witness_and_well_formed_signature() -> Result<()> {
 }
 
 #[test]
-fn verify_requires_an_explicit_expected_claim() -> Result<()> {
-    let error = Cli::try_parse_from(["host", "verify", "--receipt", "claim.receipt"])
-        .err()
-        .context("missing claim accepted")?;
-    assert_eq!(
-        error.kind(),
-        clap::error::ErrorKind::MissingRequiredArgument
-    );
+fn verify_accepts_an_optional_expected_claim_file() -> Result<()> {
+    let Command::Verify(options) =
+        Cli::try_parse_from(["host", "verify", "--receipt", "claim.receipt"])?.command
+    else {
+        bail!("expected verify command");
+    };
+    assert_eq!(options.claim, None);
     let Command::Verify(options) = Cli::try_parse_from([
         "host",
         "verify",
         "--receipt",
         "claim.receipt",
         "--claim",
-        "BASE64",
+        "coin.claim",
     ])?
     .command
     else {
         bail!("expected verify command");
     };
-    assert_eq!(options.claim, "BASE64");
+    assert_eq!(options.claim, Some(PathBuf::from("coin.claim")));
+    Ok(())
+}
+
+#[test]
+fn claim_requires_output_and_json_is_global() -> Result<()> {
+    let error = Cli::try_parse_from([
+        "host",
+        "claim",
+        "--outpoint",
+        OUTPOINT,
+        "--witness",
+        "coin.witness",
+    ])
+    .err()
+    .context("missing claim output accepted")?;
+    assert_eq!(
+        error.kind(),
+        clap::error::ErrorKind::MissingRequiredArgument
+    );
+    assert!(!cli(&[])?.json);
+    assert!(cli(&["--json"])?.json);
+    assert!(
+        Cli::try_parse_from([
+            "host",
+            "--json",
+            "claim",
+            "--outpoint",
+            OUTPOINT,
+            "--witness",
+            "coin.witness",
+            "--output",
+            "coin.claim",
+        ])?
+        .json
+    );
+    let error = Cli::try_parse_from(["host", "prove", "--dry-run"].into_iter().chain(SIGNED))
+        .err()
+        .context("missing claim input accepted")?;
+    assert_eq!(
+        error.kind(),
+        clap::error::ErrorKind::MissingRequiredArgument
+    );
     Ok(())
 }
 
