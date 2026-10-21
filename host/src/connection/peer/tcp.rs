@@ -1,8 +1,5 @@
 use super::{
-    super::{
-        MAX_REQUEST,
-        socket::{SocketUrl, connect_tcp},
-    },
+    super::socket::{SocketUrl, connect_tcp},
     Transport,
     deadline::DeadlineStream,
 };
@@ -43,9 +40,6 @@ impl Transport for Tcp {
     fn send(&mut self, message: NetworkMessage) -> Result<()> {
         let message = RawNetworkMessage::new(Magic::BITCOIN, message);
         let bytes = serialize(&message);
-        if bytes.len() as u64 > MAX_REQUEST + 24 {
-            bail!("P2P request exceeds size limit");
-        }
         let mut stream = self.stream.take().context("P2P connection is closed")?;
         stream.write_all(&bytes).context("P2P write failed")?;
         stream.flush().context("P2P flush failed")?;

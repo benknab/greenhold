@@ -1,5 +1,4 @@
 use super::{
-    MAX_REQUEST,
     header::HeaderResponse,
     json_rpc::{Request, Response, ServerError},
     socket::{SocketUrl, connect_tcp},
@@ -231,9 +230,6 @@ impl Client {
             params,
         })?;
         request.push(b'\n');
-        if request.len() as u64 > MAX_REQUEST {
-            bail!("Electrum request exceeds size limit");
-        }
         let mut stream = self
             .stream
             .take()

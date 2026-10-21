@@ -19,4 +19,3 @@ pub mod utreexod_rpc;
 use std::time::Duration;
 
 const TIMEOUT: Duration = Duration::from_secs(20);
-const MAX_REQUEST: u64 = 64 * 1024;
