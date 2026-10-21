@@ -51,7 +51,9 @@ fn prepared_claim_survives_signing_delay_and_spending_but_not_a_reorg() -> Resul
     node.rpc("generate", &json!([1]))?;
     let signature = sign_claim(&report, &claim_path)?;
     let dry_run = || prove_dry(&node, claim, witness, &signature);
-    let executed = success(&dry_run()?)?;
+    let executed_output = dry_run()?;
+    assert_progress(&executed_output, false)?;
+    let executed = success(&executed_output)?;
     assert_eq!(executed["claim"], report["claim"]);
     assert_new_claim_uses_tip(&node, &input, directory.path())?;
     assert_human_dry_run(&node, claim, witness, &signature, &report)?;
@@ -71,7 +73,7 @@ fn prepared_claim_survives_signing_delay_and_spending_but_not_a_reorg() -> Resul
         node.rpc("gettxout", &json!([funding.compute_txid(), 0, false]))?
             .is_null()
     );
-    let proved = success(&command_with_timeout(
+    let proved_output = command_with_timeout(
         &node,
         "regtest",
         "prove",
@@ -87,7 +89,9 @@ fn prepared_claim_survives_signing_delay_and_spending_but_not_a_reorg() -> Resul
             receipt,
         ],
         Duration::from_mins(10),
-    )?)?;
+    )?;
+    assert_progress(&proved_output, true)?;
+    let proved = success(&proved_output)?;
     assert_receipt(&proved, &fs::read(receipt)?, &fs::read(claim)?)?;
     assert!(proved.get("cycles").is_none());
     let accepted = json!({"claim": report["claim"],
@@ -239,6 +243,35 @@ fn assert_public_report(actual: &Value, expected: &Value) {
         assert_eq!(actual[field], expected[field], "{field}");
     }
     assert!(actual.get("encoded").is_none());
+}
+
+/// Captured progress stays on stderr and contains no terminal control sequences.
+fn assert_progress(output: &std::process::Output, proved: bool) -> Result<()> {
+    let stderr = std::str::from_utf8(&output.stderr)?;
+    assert!(!stderr.contains(['\u{1b}', '\r']), "{stderr}");
+    let stages = [
+        "Checking signature",
+        "Checking chain state",
+        "Executing guest",
+        "Generating proof",
+        "Checking receipt",
+        "Saving receipt",
+    ];
+    let count = if proved { stages.len() } else { 3 };
+    let mut remaining = stderr;
+    for stage in &stages[..count] {
+        let (_, rest) = remaining
+            .split_once(&format!("{stage}...\n"))
+            .context("missing stage start")?;
+        let (_, rest) = rest
+            .split_once(&format!("{stage}: done ("))
+            .context("missing stage completion")?;
+        remaining = rest;
+    }
+    if !proved {
+        assert!(!stderr.contains("Generating proof"), "{stderr}");
+    }
+    Ok(())
 }
 
 fn assert_claim_file(path: &Path, report: &Value) -> Result<()> {

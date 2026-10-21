@@ -1,3 +1,4 @@
+use crate::progress;
 use anyhow::{Context as _, Result, bail};
 use greenhold_core::{claim::Claim, input::ClaimInput};
 use greenhold_guest_builder::{GREENHOLD_GUEST_ELF, GREENHOLD_GUEST_ID};
@@ -30,13 +31,18 @@ pub fn execute(input: &ClaimInput, expected: &Claim) -> Result<u64> {
 pub fn prove(input: &ClaimInput, expected: &Claim) -> Result<Receipt> {
     let env = ExecutorEnv::builder().write(input)?.build()?;
     // Unlike composite receipts, succinct receipts do not leak the execution length.
-    let receipt = LocalProver::new("local")
-        .prove_with_opts(env, GREENHOLD_GUEST_ELF, &ProverOpts::succinct())
-        .context("guest proving failed")?
-        .receipt;
-    if &verify(&receipt)? != expected {
-        bail!("guest claim does not match the host claim");
-    }
+    let receipt = progress::run("Generating proof", || {
+        Ok(LocalProver::new("local")
+            .prove_with_opts(env, GREENHOLD_GUEST_ELF, &ProverOpts::succinct())
+            .context("guest proving failed")?
+            .receipt)
+    })?;
+    progress::run("Checking receipt", || {
+        if &verify(&receipt)? != expected {
+            bail!("guest claim does not match the host claim");
+        }
+        Ok(())
+    })?;
     Ok(receipt)
 }
 
