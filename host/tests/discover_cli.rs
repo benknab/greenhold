@@ -7,7 +7,7 @@ fn discover_checks_address_and_network_before_node_access() -> Result<()> {
     let help = Command::new(binary).args(["discover", "--help"]).output()?;
     assert!(help.status.success());
     let help = String::from_utf8(help.stdout)?;
-    assert!(help.contains("<ADDRESS>"));
+    assert!(help.contains("--address <ADDRESS>"));
     assert!(help.contains("one per line"));
     assert!(help.contains("--electrum [<URL>]"));
     assert!(help.contains("--utreexod"));
@@ -35,7 +35,7 @@ fn discover_checks_address_and_network_before_node_access() -> Result<()> {
             ],
         ] {
             let output = Command::new(binary)
-                .args(["discover", address])
+                .args(["discover", "--address", address])
                 .args(connection)
                 .output()?;
             assert_eq!(output.status.code(), Some(code));

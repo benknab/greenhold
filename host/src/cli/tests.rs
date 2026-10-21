@@ -13,7 +13,7 @@ const SIGNED: [&str; 4] = [
 
 /// Parse prove arguments after its claim and witness/signature flags.
 fn prove(args: &[&str]) -> clap::error::Result<Cli> {
-    let args = ["host", "prove", "BASE64"]
+    let args = ["host", "prove", "--claim", "BASE64"]
         .into_iter()
         .chain(SIGNED)
         .chain(args.iter().copied());
@@ -23,9 +23,16 @@ fn prove(args: &[&str]) -> clap::error::Result<Cli> {
 /// Parse claim arguments after its required witness path.
 fn cli(args: &[&str]) -> clap::error::Result<Cli> {
     Cli::try_parse_from(
-        ["host", "claim", OUTPOINT, "--witness", "coin.witness"]
-            .into_iter()
-            .chain(args.iter().copied()),
+        [
+            "host",
+            "claim",
+            "--outpoint",
+            OUTPOINT,
+            "--witness",
+            "coin.witness",
+        ]
+        .into_iter()
+        .chain(args.iter().copied()),
     )
 }
 
@@ -46,6 +53,7 @@ fn claim_context_defaults_and_explicit_connections() -> Result<()> {
     options.connections.rpc_config()?;
 
     let options = parse(&[
+        "--last-height",
         "200",
         "--first-height",
         "100",
@@ -99,6 +107,7 @@ fn incomplete_auth_and_invalid_values_fail_during_parsing() -> Result<()> {
         ("--network", "testnet"),
         ("--network", "testnet4"),
         ("--first-height", "4294967296"),
+        ("--last-height", "4294967296"),
     ] {
         assert!(cli(&[flag, value]).is_err());
     }
@@ -167,7 +176,7 @@ fn prove_needs_exactly_one_of_output_and_dry_run() -> Result<()> {
 fn prove_needs_a_witness_and_well_formed_signature() -> Result<()> {
     // Replace or drop one flag of SIGNED, then parse a dry run.
     let parse = |flag: &str, value: Option<&str>| -> Result<clap::error::ErrorKind> {
-        let mut args = vec!["host", "prove", "BASE64", "--dry-run"];
+        let mut args = vec!["host", "prove", "--claim", "BASE64", "--dry-run"];
         for pair in SIGNED.chunks(2) {
             match (pair, value) {
                 ([name, _], Some(value)) if *name == flag => args.extend([flag, value]),
@@ -195,15 +204,22 @@ fn prove_needs_a_witness_and_well_formed_signature() -> Result<()> {
 
 #[test]
 fn verify_requires_an_explicit_expected_claim() -> Result<()> {
-    let error = Cli::try_parse_from(["host", "verify", "claim.receipt"])
+    let error = Cli::try_parse_from(["host", "verify", "--receipt", "claim.receipt"])
         .err()
         .context("missing claim accepted")?;
     assert_eq!(
         error.kind(),
         clap::error::ErrorKind::MissingRequiredArgument
     );
-    let Command::Verify(options) =
-        Cli::try_parse_from(["host", "verify", "claim.receipt", "--claim", "BASE64"])?.command
+    let Command::Verify(options) = Cli::try_parse_from([
+        "host",
+        "verify",
+        "--receipt",
+        "claim.receipt",
+        "--claim",
+        "BASE64",
+    ])?
+    .command
     else {
         bail!("expected verify command");
     };
@@ -225,9 +241,14 @@ fn rpc_url_excludes_embedded_secrets_and_non_http_transports() {
 
 fn discover_cli(extra: &[&str]) -> clap::error::Result<Cli> {
     Cli::try_parse_from(
-        ["host", "discover", "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"]
-            .into_iter()
-            .chain(extra.iter().copied()),
+        [
+            "host",
+            "discover",
+            "--address",
+            "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
+        ]
+        .into_iter()
+        .chain(extra.iter().copied()),
     )
 }
 

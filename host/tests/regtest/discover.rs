@@ -7,7 +7,12 @@ use bitcoin::{Address, Network, OutPoint, ScriptBuf};
 use serde_json::json;
 
 fn discover(node: &Node, address: &Address) -> Result<Vec<OutPoint>> {
-    let output = command(node, "regtest", "discover", &[&address.to_string()])?;
+    let output = command(
+        node,
+        "regtest",
+        "discover",
+        &["--address", &address.to_string()],
+    )?;
     assert!(
         output.status.success(),
         "{}",
@@ -94,7 +99,10 @@ fn discovery_lists_confirmed_coins_across_pages_and_feeds_the_prover() -> Result
             &node,
             "signet",
             "discover",
-            &[&Address::p2wsh(&ScriptBuf::from_bytes(vec![0x51]), Network::Signet).to_string()],
+            &[
+                "--address",
+                &Address::p2wsh(&ScriptBuf::from_bytes(vec![0x51]), Network::Signet).to_string(),
+            ],
         )?,
         "not on the requested network",
     );
@@ -104,7 +112,7 @@ fn discovery_lists_confirmed_coins_across_pages_and_feeds_the_prover() -> Result
             &unindexed,
             "regtest",
             "discover",
-            &[&destination.to_string()],
+            &["--address", &destination.to_string()],
         )?,
         "node needs --addrindex",
     );
@@ -120,6 +128,7 @@ fn prove_discovered(node: &Node, outpoint: OutPoint) -> Result<()> {
         "regtest",
         "claim",
         &[
+            "--outpoint",
             &outpoint.to_string(),
             "--witness",
             witness,
@@ -134,6 +143,7 @@ fn prove_discovered(node: &Node, outpoint: OutPoint) -> Result<()> {
         "regtest",
         "prove",
         &[
+            "--claim",
             claim,
             "--witness",
             witness,

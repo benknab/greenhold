@@ -16,7 +16,8 @@ fn claim_and_prove_explain_the_prepared_signing_flow() -> Result<()> {
         (
             "claim",
             vec![
-                "<OUTPOINT> [LAST_HEIGHT]",
+                "--outpoint <OUTPOINT>",
+                "--last-height <HEIGHT>",
                 "tip-only",
                 "--minimum-sats <SATS>",
                 "--witness <FILE>",
@@ -25,13 +26,14 @@ fn claim_and_prove_explain_the_prepared_signing_flow() -> Result<()> {
         (
             "prove",
             vec![
-                "<CLAIM>",
+                "--claim <BASE64>",
                 "--witness <FILE>",
                 "--signature <SIGNATURE>",
                 "--dry-run",
             ],
         ),
-        ("verify", vec!["--claim <BASE64>"]),
+        ("verify", vec!["--receipt <FILE>", "--claim <BASE64>"]),
+        ("inspect", vec!["--receipt <FILE>"]),
     ] {
         let output = Command::new(binary).args([command, "--help"]).output()?;
         assert!(output.status.success());
@@ -76,6 +78,7 @@ fn prove_checks_the_claim_signature_before_node_access() -> Result<()> {
         } // A different valid M.
         let output = Command::new(env!("CARGO_BIN_EXE_greenhold-host"))
             .arg("prove")
+            .arg("--claim")
             .arg(STANDARD.encode(bytes))
             .arg("--witness")
             .arg(&witness_path)

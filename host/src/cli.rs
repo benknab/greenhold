@@ -38,6 +38,7 @@ pub enum Command {
 #[derive(Debug, Args)]
 pub struct DiscoverOptions {
     /// Address whose current coins should be listed.
+    #[arg(long)]
     pub address: bitcoin::Address<bitcoin::address::NetworkUnchecked>,
 
     /// Bitcoin network: bitcoin, signet, or regtest.
@@ -66,6 +67,7 @@ pub struct DiscoverOptions {
 #[derive(Debug, Args)]
 pub struct VerifyOptions {
     /// Receipt file to verify.
+    #[arg(long, value_name = "FILE")]
     pub receipt: PathBuf,
 
     /// Independently approved claim as standard padded Base64.
@@ -83,12 +85,14 @@ pub struct VerifyOptions {
 #[derive(Debug, Args)]
 pub struct InspectOptions {
     /// Receipt file to inspect.
+    #[arg(long, value_name = "FILE")]
     pub receipt: PathBuf,
 }
 
 #[derive(Debug, Args)]
 pub struct ProveOptions {
     /// Standard padded Base64 claim from the claim command's encoded field.
+    #[arg(long, value_name = "BASE64")]
     pub claim: String,
 
     /// Private coin witness captured with the claim.
@@ -118,6 +122,7 @@ pub struct ProveOptions {
 #[derive(Debug, Args)]
 pub struct ClaimOptions {
     /// Candidate output as TXID:VOUT (zero-based output index).
+    #[arg(long)]
     pub outpoint: bitcoin::OutPoint,
 
     /// Minimum coin value M in satoshis, up to 2100000000000000.
@@ -139,6 +144,7 @@ pub struct ContextOptions {
     pub network: SupportedNetwork,
 
     /// Last block height T. Defaults to the tip proof's block.
+    #[arg(long, value_name = "HEIGHT")]
     pub last_height: Option<u32>,
 
     /// First block height X. Defaults to T for a single-block context.

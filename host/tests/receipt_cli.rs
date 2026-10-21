@@ -32,6 +32,7 @@ fn verify_and_inspect_reject_bad_receipt_files_before_node_access() -> Result<()
         // An unused local port: node access would fail with a connection error instead.
         let verify = [
             "verify",
+            "--receipt",
             path,
             "--claim",
             "BASE64",
@@ -42,7 +43,7 @@ fn verify_and_inspect_reject_bad_receipt_files_before_node_access() -> Result<()
             "--utreexod-rpc-password",
             "pass",
         ];
-        for args in [&verify[..], &["inspect", path][..]] {
+        for args in [&verify[..], &["inspect", "--receipt", path][..]] {
             let output = Command::new(binary).args(args).output()?;
             assert_eq!(output.status.code(), Some(1));
             assert!(output.stdout.is_empty());

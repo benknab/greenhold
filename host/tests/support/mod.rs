@@ -179,7 +179,7 @@ pub fn context_digest(node: &Node, first: u32, last: u32) -> Result<String> {
 /// Run `inspect`, which takes no network or node flags.
 pub fn inspect(receipt: &str) -> Result<Output> {
     Ok(Command::new(env!("CARGO_BIN_EXE_greenhold-host"))
-        .args(["inspect", receipt])
+        .args(["inspect", "--receipt", receipt])
         .output()?)
 }
 

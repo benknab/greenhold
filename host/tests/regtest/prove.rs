@@ -29,7 +29,9 @@ fn prepared_claim_survives_signing_delay_and_spending_but_not_a_reorg() -> Resul
         "regtest",
         "claim",
         &[
+            "--outpoint",
             &input,
+            "--last-height",
             "433",
             "--first-height",
             "433",
@@ -71,6 +73,7 @@ fn prepared_claim_survives_signing_delay_and_spending_but_not_a_reorg() -> Resul
         "regtest",
         "prove",
         &[
+            "--claim",
             claim,
             "--witness",
             witness,
@@ -91,7 +94,7 @@ fn prepared_claim_survives_signing_delay_and_spending_but_not_a_reorg() -> Resul
                 &node,
                 "regtest",
                 "verify",
-                &[receipt, "--claim", claim]
+                &["--receipt", receipt, "--claim", claim]
             )?)?,
             accepted
         );
@@ -103,7 +106,12 @@ fn prepared_claim_survives_signing_delay_and_spending_but_not_a_reorg() -> Resul
     node.rpc("invalidateblock", &json!([report["claim"]["last"]["hash"]]))?;
     node.rpc("generate", &json!([4]))?;
     rejection(
-        &command(&node, "regtest", "verify", &[receipt, "--claim", claim])?,
+        &command(
+            &node,
+            "regtest",
+            "verify",
+            &["--receipt", receipt, "--claim", claim],
+        )?,
         "claim does not match the node's chain state",
     );
     rejection(&dry_run()?, "claim does not match the node's chain state");
@@ -122,6 +130,7 @@ fn prove_dry(
         "regtest",
         "prove",
         &[
+            "--claim",
             claim,
             "--witness",
             witness,
@@ -139,7 +148,14 @@ fn assert_tip_only(node: &Node, input: &str, directory: &Path) -> Result<()> {
             node,
             "regtest",
             "claim",
-            &[input, "433", "--witness", witness.to_str().context("path")?],
+            &[
+                "--outpoint",
+                input,
+                "--last-height",
+                "433",
+                "--witness",
+                witness.to_str().context("path")?,
+            ],
         )?,
         "proof block height does not match requested last height",
     );
@@ -158,12 +174,26 @@ fn assert_preparation_rejects_ineligible(
     let missing = OutPoint::new(funding.compute_txid(), 99).to_string();
     for (args, reason) in [
         (
-            vec![outpoint.as_str(), "--minimum-sats", "2000000001"],
+            vec![
+                "--outpoint",
+                outpoint.as_str(),
+                "--minimum-sats",
+                "2000000001",
+            ],
             "below the minimum",
         ),
-        (vec![outpoint.as_str(), "--first-height", "432"], "cutoff"),
-        (vec![young.as_str()], "coinbase coin is not spendable"),
-        (vec![missing.as_str()], "absent from the confirmed UTXO set"),
+        (
+            vec!["--outpoint", outpoint.as_str(), "--first-height", "432"],
+            "cutoff",
+        ),
+        (
+            vec!["--outpoint", young.as_str()],
+            "coinbase coin is not spendable",
+        ),
+        (
+            vec!["--outpoint", missing.as_str()],
+            "absent from the confirmed UTXO set",
+        ),
     ] {
         rejection(
             &command(
@@ -216,6 +246,7 @@ fn assert_verify_fails_closed(node: &Node, path: &Path, claim: &str) -> Result<(
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_greenhold-host"))
         .args([
             "verify",
+            "--receipt",
             receipt,
             "--claim",
             &STANDARD.encode(changed),
@@ -231,7 +262,12 @@ fn assert_verify_fails_closed(node: &Node, path: &Path, claim: &str) -> Result<(
         .output()?;
     rejection(&output, "receipt does not match the expected claim");
     rejection(
-        &command(node, "bitcoin", "verify", &[receipt, "--claim", claim])?,
+        &command(
+            node,
+            "bitcoin",
+            "verify",
+            &["--receipt", receipt, "--claim", claim],
+        )?,
         "receipt claims regtest, not bitcoin",
     );
     let mut tampered: Receipt = bincode::deserialize(&fs::read(path)?[TAG.len()..])?;
@@ -242,7 +278,12 @@ fn assert_verify_fails_closed(node: &Node, path: &Path, claim: &str) -> Result<(
     fs::write(&tampered_path, file)?;
     let tampered = tampered_path.to_str().context("receipt path")?;
     rejection(
-        &command(node, "regtest", "verify", &[tampered, "--claim", claim])?,
+        &command(
+            node,
+            "regtest",
+            "verify",
+            &["--receipt", tampered, "--claim", claim],
+        )?,
         "receipt verification failed",
     );
     rejection(&inspect(tampered)?, "receipt verification failed");
@@ -257,7 +298,12 @@ fn assert_verify_fails_closed(node: &Node, path: &Path, claim: &str) -> Result<(
     )?;
     other.rpc("generate", &json!([433]))?;
     rejection(
-        &command(&other, "regtest", "verify", &[receipt, "--claim", claim])?,
+        &command(
+            &other,
+            "regtest",
+            "verify",
+            &["--receipt", receipt, "--claim", claim],
+        )?,
         "claim does not match the node's chain state",
     );
     let unindexed = Node::start(image()?, &["--noutreexo".into()], Some(node))?;
@@ -267,7 +313,7 @@ fn assert_verify_fails_closed(node: &Node, path: &Path, claim: &str) -> Result<(
             &unindexed,
             "regtest",
             "verify",
-            &[receipt, "--claim", claim],
+            &["--receipt", receipt, "--claim", claim],
         )?,
         "cannot retrieve Utreexo state",
     );
