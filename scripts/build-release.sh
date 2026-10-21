@@ -42,11 +42,12 @@ name=greenhold-v$version-$target
 out=$root/target/dist/v$version
 rm -rf "$out" && mkdir -p "$out" || exit
 
-# Fix archive metadata so the archive bytes depend only on the binary and commit.
+# Fix archive metadata so the archive bytes depend only on the binary, license, and commit.
 chmod 755 "$binary"
-TZ=UTC touch -t "$(date -u -r "$epoch" +%Y%m%d%H%M.%S)" "$binary"
+chmod 644 LICENSE
+TZ=UTC touch -t "$(date -u -r "$epoch" +%Y%m%d%H%M.%S)" "$binary" LICENSE
 COPYFILE_DISABLE=1 tar --format ustar --uid 0 --gid 0 --uname root --gname root --no-xattrs \
-    --no-acls --no-fflags -cf - -C target/reproducible greenhold | gzip -n -9 >"$out/$name.tar.gz"
+    --no-acls --no-fflags -cf - LICENSE -C target/reproducible greenhold | gzip -n -9 >"$out/$name.tar.gz"
 (cd "$out" && shasum -a 256 "$name.tar.gz" >SHA256SUMS)
 printf '\nRelease artifacts: %s\n' "$out"
 tee "$out/$name.build-info.txt" <<EOF
