@@ -12,6 +12,7 @@ pub const DEFAULT_ELECTRUM: &str = "tls://electrum.hospitablealpaca.com:50002";
 
 #[derive(Debug, Parser)]
 #[command(
+    name = "greenhold",
     version,
     about = "Bitcoin proof-of-funds tools",
     arg_required_else_help = true

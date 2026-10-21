@@ -26,7 +26,7 @@ rzup install r0vm 3.0.6
 
 ```sh
 cargo reproducible
-GH="$PWD/target/reproducible/greenhold-host"
+GH="$PWD/target/reproducible/greenhold"
 ```
 
 ## Usage

@@ -225,7 +225,7 @@ fn assert_verified_reports(node: &Node, receipt: &str, expected: &Value) -> Resu
         )?,
         expected,
     )?;
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_greenhold-host"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_greenhold"))
         .args(["inspect", "--receipt", receipt])
         .output()?;
     assert_human_report(&output, expected)

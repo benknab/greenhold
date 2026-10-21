@@ -8,6 +8,10 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[[bin]]
+name = "greenhold"
+path = "src/main.rs"
+
 [features]
 reproducible = ["greenhold-guest-builder/reproducible"]
 

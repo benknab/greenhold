@@ -3,7 +3,7 @@ incompatible-rust-versions = "fallback"
 
 [alias]
 lint = "clippy --locked --workspace --all-targets -- -D warnings"
-# target/reproducible/greenhold-host, with the guest built in Docker and checked against
+# target/reproducible/greenhold, with the guest built in Docker and checked against
 # guest-builder/image-id.
 reproducible = "build --locked --profile reproducible -p greenhold-host --features reproducible"
 regtest = "test --locked -p greenhold-host --test regtest -- --ignored --nocapture --test-threads=1"

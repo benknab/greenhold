@@ -3,7 +3,7 @@ use std::process::Command;
 
 #[test]
 fn discover_checks_address_and_network_before_node_access() -> Result<()> {
-    let binary = env!("CARGO_BIN_EXE_greenhold-host");
+    let binary = env!("CARGO_BIN_EXE_greenhold");
     let help = Command::new(binary).args(["discover", "--help"]).output()?;
     assert!(help.status.success());
     let help = String::from_utf8(help.stdout)?;

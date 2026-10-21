@@ -179,7 +179,7 @@ pub fn context_digest(node: &Node, unspent_since: u32, unspent_at: u32) -> Resul
 
 /// Run `inspect`, which takes no network or node flags.
 pub fn inspect(receipt: &str) -> Result<Output> {
-    Ok(Command::new(env!("CARGO_BIN_EXE_greenhold-host"))
+    Ok(Command::new(env!("CARGO_BIN_EXE_greenhold"))
         .args(["inspect", "--receipt", receipt, "--json"])
         .output()?)
 }
@@ -198,7 +198,7 @@ pub fn command_with_timeout(
     // Temporary files prevent long discovery lists from filling a pipe while we wait.
     let mut stdout = tempfile::tempfile()?;
     let mut stderr = tempfile::tempfile()?;
-    let mut child = Command::new(env!("CARGO_BIN_EXE_greenhold-host"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_greenhold"))
         .args([
             command,
             "--network",

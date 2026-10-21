@@ -3,7 +3,7 @@ use std::{fs, process::Command};
 
 #[test]
 fn verify_and_inspect_reject_bad_receipt_files_before_node_access() -> Result<()> {
-    let binary = env!("CARGO_BIN_EXE_greenhold-host");
+    let binary = env!("CARGO_BIN_EXE_greenhold");
     let directory = tempfile::tempdir()?;
     let tag = b"greenhold/receipt/v1\0";
     let mut garbage = tag.to_vec();

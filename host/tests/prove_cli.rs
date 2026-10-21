@@ -10,7 +10,7 @@ mod fixture;
 
 #[test]
 fn claim_and_prove_explain_the_prepared_signing_flow() -> Result<()> {
-    let binary = env!("CARGO_BIN_EXE_greenhold-host");
+    let binary = env!("CARGO_BIN_EXE_greenhold");
     for (command, required) in [
         (
             "claim",
@@ -55,7 +55,7 @@ fn claim_and_prove_explain_the_prepared_signing_flow() -> Result<()> {
 
 #[test]
 fn prove_rejects_a_separate_nonce_option() -> Result<()> {
-    let output = Command::new(env!("CARGO_BIN_EXE_greenhold-host"))
+    let output = Command::new(env!("CARGO_BIN_EXE_greenhold"))
         .args(["prove", "--claim", "coin.claim"])
         .args([
             "--nonce",
@@ -79,7 +79,7 @@ fn claim_rejects_an_explicit_unspent_at_option() -> Result<()> {
     let directory = tempfile::tempdir()?;
     let witness = directory.path().join("coin.witness");
     let claim = directory.path().join("coin.claim");
-    let output = Command::new(env!("CARGO_BIN_EXE_greenhold-host"))
+    let output = Command::new(env!("CARGO_BIN_EXE_greenhold"))
         .args([
             "claim",
             "--outpoint",
@@ -143,7 +143,7 @@ fn prove_checks_the_claim_signature_before_node_access() -> Result<()> {
             bytes[offset] ^= 1;
         } // Change only M or the nonce, preserving a valid claim format.
         fs::write(&claim_path, bytes)?;
-        let output = Command::new(env!("CARGO_BIN_EXE_greenhold-host"))
+        let output = Command::new(env!("CARGO_BIN_EXE_greenhold"))
             .arg("prove")
             .arg("--claim")
             .arg(&claim_path)
@@ -238,7 +238,7 @@ fn prove_rejects_malformed_claim_files_before_witness_or_node_access() -> Result
         if let Some(contents) = contents {
             fs::write(&claim, contents)?;
         }
-        let output = Command::new(env!("CARGO_BIN_EXE_greenhold-host"))
+        let output = Command::new(env!("CARGO_BIN_EXE_greenhold"))
             .args(["prove", "--claim"])
             .arg(&claim)
             .arg("--output")
