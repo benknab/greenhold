@@ -4,7 +4,6 @@ members = ["core", "guest", "guest-builder", "host", "signer"]
 default-members = ["host"]
 
 [workspace.package]
-version = "0.1.0"
 edition = "2024"
 rust-version = "1.97"
 publish = false
@@ -46,3 +45,5 @@ debug = 1
 # Separate output directory, so dev release builds cannot replace this binary.
 [profile.reproducible]
 inherits = "release"
+# On macOS, debug info adds build paths and object file times to the binary.
+strip = "debuginfo"

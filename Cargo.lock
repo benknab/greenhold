@@ -1851,7 +1851,7 @@ checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 
 [[package]]
 name = "greenhold-core"
-version = "0.1.0"
+version = "0.1.0-beta.1"
 dependencies = [
  "anyhow",
  "bip322",
@@ -1864,7 +1864,7 @@ dependencies = [
 
 [[package]]
 name = "greenhold-guest"
-version = "0.1.0"
+version = "0.1.0-beta.1"
 dependencies = [
  "greenhold-core",
  "risc0-zkvm",
@@ -1880,7 +1880,7 @@ dependencies = [
 
 [[package]]
 name = "greenhold-host"
-version = "0.1.0"
+version = "0.1.0-beta.1"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
