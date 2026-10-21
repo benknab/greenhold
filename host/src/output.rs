@@ -89,7 +89,7 @@ impl<'a> Report<'a> {
         }
         if let Some(address) = &self.address {
             println!(
-                "\nSign this exact message with address:\n{address}\n\n{}",
+                "\nWith address\n{address}\n\nsign this exact message\n{}",
                 self.message
             );
         }
