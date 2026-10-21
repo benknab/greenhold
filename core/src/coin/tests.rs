@@ -44,7 +44,7 @@ fn single_coin_paths_bind_all_leaf_fields_and_proof_block() -> Result<()> {
     let sibling = [42; 32];
     let root: [u8; 32] = Sha512_256::digest([leaf, sibling].concat()).into();
     let state = context(3, vec![root, [43; 32]])?;
-    let witness = CoinWitness::new(coin.clone(), state.last().hash(), 0, vec![sibling])?;
+    let witness = CoinWitness::new(coin.clone(), state.unspent_at().hash(), 0, vec![sibling])?;
     witness.verify_membership(&state)?;
     let json = serde_json::to_value(&witness)?;
     for (field, replacement) in [
@@ -116,7 +116,7 @@ fn sparse_forests_right_children_and_promoted_leaves() -> Result<()> {
         ((1 << 61) + 1, vec![sibling, leaf], 1 << 61, vec![]),
     ] {
         let state = context(leaves, roots)?;
-        CoinWitness::new(coin.clone(), state.last().hash(), target, hashes)?
+        CoinWitness::new(coin.clone(), state.unspent_at().hash(), target, hashes)?
             .verify_membership(&state)?;
     }
     for (leaves, roots, target) in [
@@ -128,7 +128,7 @@ fn sparse_forests_right_children_and_promoted_leaves() -> Result<()> {
     ] {
         let state = context(leaves, roots)?;
         reject(
-            CoinWitness::new(coin.clone(), state.last().hash(), target, vec![])?
+            CoinWitness::new(coin.clone(), state.unspent_at().hash(), target, vec![])?
                 .verify_membership(&state),
             "outside occupied forest",
         )?;

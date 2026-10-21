@@ -10,8 +10,14 @@ fn minimum(sats: u64) -> Result<MinimumAmount> {
     MinimumAmount::try_from(sats)
 }
 
-fn check(creation: u32, coinbase: bool, first: u32, last: u32, sats: u64) -> Result<EligibleCoin> {
-    let (witness, context) = proved(coin(creation, coinbase)?, first, last)?;
+fn check(
+    creation: u32,
+    coinbase: bool,
+    unspent_since: u32,
+    unspent_at: u32,
+    sats: u64,
+) -> Result<EligibleCoin> {
+    let (witness, context) = proved(coin(creation, coinbase)?, unspent_since, unspent_at)?;
     EligibleCoin::new(witness, &context, minimum(sats)?)
 }
 
@@ -26,7 +32,7 @@ fn eligibility_requires_membership_creation_value_and_maturity() -> Result<()> {
     let eligible = check(10, false, 10, 10, VALUE)?;
     assert_eq!(eligible.witness().coin(), &coin(10, false)?);
     reject(check(10, false, 10, 10, VALUE + 1), "below the minimum")?;
-    reject(check(11, false, 10, 20, 1), "first-height cutoff")?;
+    reject(check(11, false, 10, 20, 1), "created after unspent_since")?;
 
     // Spendable in block T + 1 needs T + 1 - creation >= 100.
     check(21, true, 21, 120, 1)?;
@@ -44,7 +50,7 @@ fn eligibility_requires_membership_creation_value_and_maturity() -> Result<()> {
         "membership mismatch",
     )?;
     let later = ChainContext::new(
-        context.first().clone(),
+        context.unspent_since().clone(),
         BlockEndpoint::new(Network::Regtest, 11, genesis_block(Network::Bitcoin).header)?,
         context.state().clone(),
     )?;

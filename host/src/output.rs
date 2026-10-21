@@ -69,8 +69,8 @@ impl<'a> Report<'a> {
             "Minimum amount: {} sats",
             u64::from(self.claim.minimum_sats())
         );
-        println!("First height: {}", self.claim.first_height());
-        println!("Last height: {}", self.claim.last_height());
+        println!("Unspent since: {}", self.claim.unspent_since());
+        println!("Unspent at: {}", self.claim.unspent_at());
         println!("Nonce: {}", self.claim.nonce());
         for (label, path) in [
             ("Claim saved", self.claim_file),

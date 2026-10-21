@@ -43,8 +43,8 @@ fn guest_rejects_changed_claims_and_witnesses_without_host_checks() -> Result<()
         ("/minimum", json!(fixture::VALUE - 1)), // Still eligible: must fail signature binding.
         ("/minimum", json!(fixture::VALUE + 1)),
         ("/nonce", json!("cd".repeat(32))), // Still eligible: only the signed challenge changes.
-        ("/context/first/height", json!(11)), // Still eligible, different X.
-        ("/context/last/height", json!(21)), // Still eligible, different T.
+        ("/context/unspent_since/height", json!(11)), // Still eligible, different X.
+        ("/context/unspent_at/height", json!(21)), // Still eligible, different T.
         ("/context/state/roots", json!(vec![[0; 32]])),
         ("/witness/proved_at", json!("00".repeat(32))),
         ("/signature", json!("smpAA==")),
@@ -77,7 +77,7 @@ fn guest_rejects_changed_claims_and_witnesses_without_host_checks() -> Result<()
 
     // Change a valid PoW header at X while retaining the authenticated state at T.
     let mut changed = original.clone();
-    changed["context"]["first"]["header"] = serde_json::to_value(
+    changed["context"]["unspent_since"]["header"] = serde_json::to_value(
         bitcoin::blockdata::constants::genesis_block(bitcoin::Network::Bitcoin).header,
     )?;
     let _: ChainContext = serde_json::from_value(changed["context"].clone())?;
@@ -96,17 +96,17 @@ fn guest_rejects_rebinding_the_signature_to_a_different_valid_context() -> Resul
     };
     let (input, _) = fixture::signed(ScriptType::P2wpkh, Format::Simple)?;
     let original = serde_json::to_value(input)?;
-    for case in ["last block", "network", "accumulator"] {
+    for case in ["unspent_at block", "network", "accumulator"] {
         let mut changed = original.clone();
         match case {
-            "last block" | "network" => {
+            "unspent_at block" | "network" => {
                 let header = genesis_block(Network::Bitcoin).header;
-                changed["context"]["last"]["header"] = serde_json::to_value(header)?;
+                changed["context"]["unspent_at"]["header"] = serde_json::to_value(header)?;
                 changed["witness"]["proved_at"] = json!(header.block_hash());
                 if case == "network" {
-                    changed["context"]["first"]["header"] = serde_json::to_value(header)?;
-                    changed["context"]["first"]["network"] = json!("bitcoin");
-                    changed["context"]["last"]["network"] = json!("bitcoin");
+                    changed["context"]["unspent_since"]["header"] = serde_json::to_value(header)?;
+                    changed["context"]["unspent_since"]["network"] = json!("bitcoin");
+                    changed["context"]["unspent_at"]["network"] = json!("bitcoin");
                 }
             }
             _ => {

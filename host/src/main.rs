@@ -86,7 +86,7 @@ fn prepare(options: &cli::ClaimOptions, json: bool) -> Result<()> {
     let (context, coin) = coin::fetch(
         options.outpoint,
         options.context.network,
-        options.context.first_height,
+        options.context.unspent_since,
         options.minimum_sats,
         &rpc,
     )?;

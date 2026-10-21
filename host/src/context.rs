@@ -4,31 +4,35 @@ use bitcoin::{BlockHash, Network, block::Header, blockdata::constants::genesis_b
 use greenhold_core::context::{AccumulatorState, BlockEndpoint, ChainContext};
 use greenhold_core::network::SupportedNetwork;
 
-/// Lookup heights. An omitted last height uses the selected block or the RPC tip.
+/// Lookup heights. An omitted `unspent_at` uses the selected block or the RPC tip.
 #[derive(Clone, Copy, Debug)]
 pub struct Input {
     network: SupportedNetwork,
-    first: Option<u32>,
-    last: Option<u32>,
+    unspent_since: Option<u32>,
+    unspent_at: Option<u32>,
 }
 
 impl Input {
-    pub fn new(network: Network, first: Option<u32>, last: Option<u32>) -> Result<Self> {
-        if let (Some(first), Some(last)) = (first, last)
-            && first > last
+    pub fn new(
+        network: Network,
+        unspent_since: Option<u32>,
+        unspent_at: Option<u32>,
+    ) -> Result<Self> {
+        if let (Some(unspent_since), Some(unspent_at)) = (unspent_since, unspent_at)
+            && unspent_since > unspent_at
         {
-            bail!("first height must not exceed last height");
+            bail!("unspent_since must not exceed unspent_at");
         }
         Ok(Self {
             network: network.try_into()?,
-            first,
-            last,
+            unspent_since,
+            unspent_at,
         })
     }
 }
 
 /// Retrieve public state from the caller's chosen Utreexod node on this run.
-/// The RPC node supplies headers, height bindings, and roots at the last block.
+/// The RPC node supplies headers, height bindings, and roots at `unspent_at`.
 /// This function never accepts a saved context as authority.
 pub fn fetch(input: Input, config: &utreexod_rpc::Config) -> Result<ChainContext> {
     fetch_selected(input, config, None)
@@ -36,17 +40,17 @@ pub fn fetch(input: Input, config: &utreexod_rpc::Config) -> Result<ChainContext
 
 /// Retrieve context for an exact proof block, treating its hash only as a lookup input.
 /// The node supplies its height, header, and roots. Later tip changes do not replace it.
-/// An omitted first height defaults to this block.
+/// An omitted `unspent_since` defaults to this block's height.
 pub fn fetch_at(
     network: SupportedNetwork,
-    first: Option<u32>,
+    unspent_since: Option<u32>,
     config: &utreexod_rpc::Config,
     block: BlockHash,
 ) -> Result<ChainContext> {
     let input = Input {
         network,
-        first,
-        last: None,
+        unspent_since,
+        unspent_at: None,
     };
     fetch_selected(input, config, Some(block))
 }
@@ -65,10 +69,10 @@ fn fetch_selected(
         );
     }
     // Never replace a selected block with a later tip during retrieval.
-    let (last_height, pinned) = if let Some(hash) = selected {
+    let (unspent_at, pinned) = if let Some(hash) = selected {
         let block = selected_endpoint(&mut rpc, input.network, hash)?;
         (block.height(), Some(block))
-    } else if let Some(height) = input.last {
+    } else if let Some(height) = input.unspent_at {
         (height, None)
     } else {
         let block = rpc
@@ -82,34 +86,34 @@ fn fetch_selected(
             Some(BlockEndpoint::new(input.network.into(), height, header)?),
         )
     };
-    let first_height = input.first.unwrap_or(last_height);
-    if first_height > last_height {
-        bail!("first height must not exceed last height");
+    let unspent_since = input.unspent_since.unwrap_or(unspent_at);
+    if unspent_since > unspent_at {
+        bail!("unspent_since must not exceed unspent_at");
     }
-    let first = if let Some(block) = &pinned
-        && first_height == last_height
+    let since_block = if let Some(block) = &pinned
+        && unspent_since == unspent_at
     {
         block.clone()
     } else {
-        endpoint_block(&mut rpc, input.network.into(), first_height)?
+        endpoint_block(&mut rpc, input.network.into(), unspent_since)?
     };
-    let last = if first_height == last_height {
-        first.clone()
+    let at_block = if unspent_since == unspent_at {
+        since_block.clone()
     } else if let Some(block) = pinned {
         block
     } else {
-        endpoint_block(&mut rpc, input.network.into(), last_height)?
+        endpoint_block(&mut rpc, input.network.into(), unspent_at)?
     };
-    let roots = rpc.utreexo_roots(&last.hash()).with_context(|| {
+    let roots = rpc.utreexo_roots(&at_block.hash()).with_context(|| {
         format!(
             "cannot retrieve Utreexo state at height {} ({})",
-            last.height(),
-            last.hash()
+            at_block.height(),
+            at_block.hash()
         )
     })?;
     let state = AccumulatorState::new(roots.num_leaves, roots.roots)?;
 
-    ChainContext::new(first, last, state)
+    ChainContext::new(since_block, at_block, state)
 }
 
 fn selected_endpoint(

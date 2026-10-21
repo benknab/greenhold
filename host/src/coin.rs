@@ -13,7 +13,7 @@ use greenhold_core::{
 pub fn fetch(
     outpoint: OutPoint,
     network: SupportedNetwork,
-    first: Option<u32>,
+    unspent_since: Option<u32>,
     minimum: MinimumAmount,
     config: &utreexod_rpc::Config,
 ) -> Result<(ChainContext, EligibleCoin)> {
@@ -46,7 +46,7 @@ pub fn fetch(
     )?;
     let proved_at = proof.proved_at_hash;
     let witness = bind(coin, proof)?;
-    let context = context::fetch_at(network, first, config, proved_at)?;
+    let context = context::fetch_at(network, unspent_since, config, proved_at)?;
     let coin = EligibleCoin::new(witness, &context, minimum)?;
     Ok((context, coin))
 }

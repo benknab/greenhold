@@ -25,8 +25,8 @@ pub fn context(
 ) -> Result<greenhold_core::context::ChainContext> {
     let input = context::Input::new(
         claim.network().into(),
-        Some(claim.first_height()),
-        Some(claim.last_height()),
+        Some(claim.unspent_since()),
+        Some(claim.unspent_at()),
     )?;
     let context = context::fetch(input, rpc)?;
     if Claim::new(&context, claim.minimum_sats(), claim.nonce()) != *claim {

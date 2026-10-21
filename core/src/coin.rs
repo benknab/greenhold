@@ -142,12 +142,12 @@ impl CoinWitness {
     }
 
     /// Verify the state block and full leaf path. This establishes that the coin is
-    /// unspent at the context's last block, not that it is eligible or authorized.
+    /// unspent at the context's `unspent_at` block, not that it is eligible or authorized.
     ///
     /// # Errors
     /// Rejects a different proof block, out-of-forest targets, and incorrect paths or roots.
     pub fn verify_membership(&self, context: &ChainContext) -> Result<()> {
-        if self.proved_at != context.last().hash() {
+        if self.proved_at != context.unspent_at().hash() {
             bail!("membership proof block does not match selected context");
         }
         let row = self.target.leading_ones();

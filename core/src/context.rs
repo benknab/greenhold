@@ -128,59 +128,67 @@ impl TryFrom<AccumulatorStateFields> for AccumulatorState {
     }
 }
 
-/// Two endpoints on one network and the accumulator state at the last endpoint.
+/// Two endpoints on one network and the accumulator state at `unspent_at`.
 /// Construction does not authenticate the state or establish ancestry.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "ContextFields")]
 pub struct ChainContext {
-    first: BlockEndpoint,
-    last: BlockEndpoint,
+    unspent_since: BlockEndpoint,
+    unspent_at: BlockEndpoint,
     state: AccumulatorState,
 }
 
 #[derive(Deserialize)]
 struct ContextFields {
-    first: BlockEndpoint,
-    last: BlockEndpoint,
+    unspent_since: BlockEndpoint,
+    unspent_at: BlockEndpoint,
     state: AccumulatorState,
 }
 
 impl ChainContext {
-    /// Bind parsed endpoints and the state supplied for the last block.
+    /// Bind parsed endpoints and the state supplied for `unspent_at`.
     ///
     /// # Errors
     /// Rejects mixed networks, reversed heights, or different headers at the same height.
-    pub fn new(first: BlockEndpoint, last: BlockEndpoint, state: AccumulatorState) -> Result<Self> {
-        if first.network != last.network {
+    pub fn new(
+        unspent_since: BlockEndpoint,
+        unspent_at: BlockEndpoint,
+        state: AccumulatorState,
+    ) -> Result<Self> {
+        if unspent_since.network != unspent_at.network {
             bail!("context endpoints must use the same network");
         }
-        if first.height > last.height {
-            bail!("first height must not exceed last height");
+        if unspent_since.height > unspent_at.height {
+            bail!("unspent_since must not exceed unspent_at");
         }
-        if first.height == last.height && first != last {
+        if unspent_since.height == unspent_at.height && unspent_since != unspent_at {
             bail!("one height cannot name two blocks");
         }
-        Ok(Self { first, last, state })
+        Ok(Self {
+            unspent_since,
+            unspent_at,
+            state,
+        })
     }
 
     #[must_use]
     pub fn network(&self) -> Network {
-        self.first.network()
+        self.unspent_since.network()
     }
 
     #[must_use]
     pub fn supported_network(&self) -> SupportedNetwork {
-        self.first.network
+        self.unspent_since.network
     }
 
     #[must_use]
-    pub fn first(&self) -> &BlockEndpoint {
-        &self.first
+    pub fn unspent_since(&self) -> &BlockEndpoint {
+        &self.unspent_since
     }
 
     #[must_use]
-    pub fn last(&self) -> &BlockEndpoint {
-        &self.last
+    pub fn unspent_at(&self) -> &BlockEndpoint {
+        &self.unspent_at
     }
 
     #[must_use]
@@ -197,7 +205,7 @@ impl ChainContext {
         let mut engine = sha256::Hash::engine();
         engine.input(b"greenhold/chain-context/v1\0");
         engine.input(&serialize(&genesis_block(self.network()).block_hash()));
-        for block in [&self.first, &self.last] {
+        for block in [&self.unspent_since, &self.unspent_at] {
             engine.input(&block.height.to_le_bytes());
             engine.input(&serialize(&block.header));
         }
@@ -214,6 +222,6 @@ impl TryFrom<ContextFields> for ChainContext {
     type Error = anyhow::Error;
 
     fn try_from(fields: ContextFields) -> Result<Self> {
-        Self::new(fields.first, fields.last, fields.state)
+        Self::new(fields.unspent_since, fields.unspent_at, fields.state)
     }
 }

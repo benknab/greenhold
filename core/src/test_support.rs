@@ -28,14 +28,18 @@ pub fn coin(creation_height: u32, coinbase: bool) -> Result<Coin> {
     )
 }
 
-/// A one-leaf forest holding `coin` at the last block T.
-pub fn proved(coin: Coin, first: u32, last: u32) -> Result<(CoinWitness, ChainContext)> {
+/// A one-leaf forest holding `coin` at `unspent_at` (T).
+pub fn proved(
+    coin: Coin,
+    unspent_since: u32,
+    unspent_at: u32,
+) -> Result<(CoinWitness, ChainContext)> {
     let header = genesis_block(Network::Regtest).header;
     let context = ChainContext::new(
-        BlockEndpoint::new(Network::Regtest, first, header)?,
-        BlockEndpoint::new(Network::Regtest, last, header)?,
+        BlockEndpoint::new(Network::Regtest, unspent_since, header)?,
+        BlockEndpoint::new(Network::Regtest, unspent_at, header)?,
         AccumulatorState::new(1, vec![coin.leaf_hash()])?,
     )?;
-    let witness = CoinWitness::new(coin, context.last().hash(), 0, vec![])?;
+    let witness = CoinWitness::new(coin, context.unspent_at().hash(), 0, vec![])?;
     Ok((witness, context))
 }

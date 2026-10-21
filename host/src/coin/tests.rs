@@ -115,9 +115,12 @@ fn run(
 fn retrieval_checks_coin_and_proof_at_the_selected_block() -> Result<()> {
     let (outpoint, steps) = fixture()?;
     let (context, coin) = run(outpoint, 5_000_000_000, steps.clone())??;
-    assert_eq!(context.first().height(), 21);
-    assert_eq!(context.last().height(), 21);
-    assert_eq!(json!(context.last().hash()), steps[3].2["provedathash"]);
+    assert_eq!(context.unspent_since().height(), 21);
+    assert_eq!(context.unspent_at().height(), 21);
+    assert_eq!(
+        json!(context.unspent_at().hash()),
+        steps[3].2["provedathash"]
+    );
     assert_eq!(coin.witness().coin().output().value.to_sat(), 5_000_000_000);
     let error = run(outpoint, 5_000_000_001, steps.clone())?
         .err()

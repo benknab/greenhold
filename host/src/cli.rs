@@ -151,9 +151,10 @@ pub struct ContextOptions {
     #[arg(long, default_value = "bitcoin")]
     pub network: SupportedNetwork,
 
-    /// First block height X. Defaults to the tip proof's block height T.
+    /// Require the coin to have remained unspent since this block height.
+    /// Defaults to the tip proof's block height (`unspent_at`).
     #[arg(long, value_name = "HEIGHT")]
-    pub first_height: Option<u32>,
+    pub unspent_since: Option<u32>,
 
     #[command(flatten)]
     pub connections: ConnectionConfig,

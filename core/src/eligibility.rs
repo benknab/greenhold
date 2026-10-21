@@ -87,17 +87,17 @@ impl EligibleCoin {
 }
 
 fn check_rules(coin: &Coin, context: &ChainContext, minimum: MinimumAmount) -> Result<()> {
-    if coin.creation_height() > context.first().height() {
-        bail!("coin was created after first-height cutoff");
+    if coin.creation_height() > context.unspent_since().height() {
+        bail!("coin was created after unspent_since");
     }
     if coin.output().value < minimum.amount() {
         bail!("coin amount is below the minimum");
     }
     // Creation at or before X, and X <= T, keep this subtraction in range.
     // Spending in block T + 1 needs T + 1 - creation >= 100.
-    let age = context.last().height() - coin.creation_height();
+    let age = context.unspent_at().height() - coin.creation_height();
     if coin.is_coinbase() && age < COINBASE_MATURITY - 1 {
-        bail!("coinbase coin is not spendable after last height");
+        bail!("coinbase coin is not spendable after unspent_at");
     }
     Ok(())
 }

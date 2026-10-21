@@ -16,7 +16,7 @@ fn claim_and_prove_explain_the_prepared_signing_flow() -> Result<()> {
             "claim",
             vec![
                 "--outpoint <OUTPOINT>",
-                "--first-height <HEIGHT>",
+                "--unspent-since <HEIGHT>",
                 "tip-only",
                 "--minimum-sats <SATS>",
                 "--nonce <HEX>",
@@ -40,7 +40,7 @@ fn claim_and_prove_explain_the_prepared_signing_flow() -> Result<()> {
         assert!(output.status.success());
         let help = String::from_utf8(output.stdout)?;
         assert!(help.contains("--json"), "{help}");
-        assert!(!help.contains("--last-height"), "{help}");
+        assert!(!help.contains("--unspent-at"), "{help}");
         assert!(!help.contains("--claim-file"), "{help}");
         if command == "verify" {
             assert!(!help.contains("--claim"), "{help}");
@@ -73,7 +73,7 @@ fn prove_rejects_a_separate_nonce_option() -> Result<()> {
 }
 
 #[test]
-fn claim_rejects_the_removed_last_height_option() -> Result<()> {
+fn claim_rejects_an_explicit_unspent_at_option() -> Result<()> {
     let directory = tempfile::tempdir()?;
     let witness = directory.path().join("coin.witness");
     let claim = directory.path().join("coin.claim");
@@ -82,7 +82,7 @@ fn claim_rejects_the_removed_last_height_option() -> Result<()> {
             "claim",
             "--outpoint",
             "1111111111111111111111111111111111111111111111111111111111111111:0",
-            "--last-height",
+            "--unspent-at",
             "200",
             "--witness",
         ])
@@ -94,7 +94,7 @@ fn claim_rejects_the_removed_last_height_option() -> Result<()> {
     assert!(output.stdout.is_empty());
     let stderr = String::from_utf8(output.stderr)?;
     assert!(
-        stderr.contains("unexpected argument '--last-height'"),
+        stderr.contains("unexpected argument '--unspent-at'"),
         "{stderr}"
     );
     assert!(!witness.exists());

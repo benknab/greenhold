@@ -109,8 +109,8 @@ fn rpc_tip_is_resolved_once_on_each_requested_network() -> Result<()> {
         // The script permits exactly one tip query.
         let context = run(Input::new(network, Some(0), None)?, rpc)??;
         assert_eq!(context.network(), network);
-        assert_eq!(context.last().height(), 10);
-        assert_eq!(context.last().hash(), block);
+        assert_eq!(context.unspent_at().height(), 10);
+        assert_eq!(context.unspent_at().hash(), block);
     }
     Ok(())
 }

@@ -68,8 +68,8 @@ pub struct BlockRef {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Claim {
     network: SupportedNetwork,
-    first: BlockRef,
-    last: BlockRef,
+    unspent_since: BlockRef,
+    unspent_at: BlockRef,
     minimum_sats: MinimumAmount,
     context_digest: sha256::Hash,
     nonce: Nonce,
@@ -84,8 +84,8 @@ impl Claim {
         };
         Self {
             network: context.supported_network(),
-            first: block(context.first()),
-            last: block(context.last()),
+            unspent_since: block(context.unspent_since()),
+            unspent_at: block(context.unspent_at()),
             minimum_sats: minimum,
             context_digest: context.digest(),
             nonce,
@@ -97,16 +97,16 @@ impl Claim {
         self.network
     }
 
-    /// Lookup input for X. A verifier fetches its own block at this height.
+    /// Lookup input for `unspent_since` (X). A verifier fetches its own block at this height.
     #[must_use]
-    pub fn first_height(&self) -> u32 {
-        self.first.height
+    pub fn unspent_since(&self) -> u32 {
+        self.unspent_since.height
     }
 
-    /// Lookup input for T. A verifier fetches its own block at this height.
+    /// Lookup input for `unspent_at` (T). A verifier fetches its own block at this height.
     #[must_use]
-    pub fn last_height(&self) -> u32 {
-        self.last.height
+    pub fn unspent_at(&self) -> u32 {
+        self.unspent_at.height
     }
 
     #[must_use]
@@ -135,7 +135,7 @@ impl Claim {
         let mut bytes = TAG.to_vec();
         let genesis = genesis_block(Network::from(self.network)).block_hash();
         bytes.extend_from_slice(genesis.as_byte_array());
-        for block in [self.first, self.last] {
+        for block in [self.unspent_since, self.unspent_at] {
             bytes.extend_from_slice(&block.height.to_le_bytes());
             bytes.extend_from_slice(block.hash.as_byte_array());
         }
@@ -163,19 +163,19 @@ impl TryFrom<&[u8]> for Claim {
                 hash: BlockHash::from_byte_array(reader.take()?),
             })
         };
-        let first = block()?;
-        let last = block()?;
+        let unspent_since = block()?;
+        let unspent_at = block()?;
         let minimum_sats = MinimumAmount::try_from(u64::from_le_bytes(reader.take()?))?;
         let context_digest = sha256::Hash::from_byte_array(reader.take()?);
         let nonce = Nonce(reader.take()?);
         if !reader.0.is_empty() {
             bail!("claim has trailing bytes");
         }
-        check_blocks(first, last)?;
+        check_blocks(unspent_since, unspent_at)?;
         Ok(Self {
             network,
-            first,
-            last,
+            unspent_since,
+            unspent_at,
             minimum_sats,
             context_digest,
             nonce,
@@ -184,11 +184,11 @@ impl TryFrom<&[u8]> for Claim {
 }
 
 /// The same block-order rules a chain context enforces.
-fn check_blocks(first: BlockRef, last: BlockRef) -> Result<()> {
-    if first.height > last.height {
-        bail!("first height must not exceed last height");
+fn check_blocks(unspent_since: BlockRef, unspent_at: BlockRef) -> Result<()> {
+    if unspent_since.height > unspent_at.height {
+        bail!("unspent_since must not exceed unspent_at");
     }
-    if first.height == last.height && first.hash != last.hash {
+    if unspent_since.height == unspent_at.height && unspent_since.hash != unspent_at.hash {
         bail!("one height cannot name two blocks");
     }
     Ok(())

@@ -13,15 +13,15 @@ fn header(network: Network) -> Header {
 }
 
 /// Distinct X and T headers, so a swapped field changes the bytes.
-fn context(first: u32, last: u32) -> Result<ChainContext> {
-    let last_header = if first == last {
+fn context(unspent_since: u32, unspent_at: u32) -> Result<ChainContext> {
+    let at_header = if unspent_since == unspent_at {
         header(Network::Regtest)
     } else {
         header(Network::Bitcoin)
     };
     ChainContext::new(
-        BlockEndpoint::new(Network::Regtest, first, header(Network::Regtest))?,
-        BlockEndpoint::new(Network::Regtest, last, last_header)?,
+        BlockEndpoint::new(Network::Regtest, unspent_since, header(Network::Regtest))?,
+        BlockEndpoint::new(Network::Regtest, unspent_at, at_header)?,
         AccumulatorState::new(3, vec![[1; 32], [2; 32]])?,
     )
 }
@@ -38,14 +38,14 @@ fn claim() -> Result<Claim> {
 fn claim_bytes_and_json_follow_the_documented_layout() -> Result<()> {
     let digest = context(10, 20)?.digest();
     let claim = claim()?;
-    let first = header(Network::Regtest).block_hash();
-    let last = header(Network::Bitcoin).block_hash();
+    let unspent_since = header(Network::Regtest).block_hash();
+    let unspent_at = header(Network::Bitcoin).block_hash();
     let mut expected = b"greenhold/claim/v2\0".to_vec();
     expected.extend(genesis_block(Network::Regtest).block_hash().to_byte_array());
     expected.extend(10u32.to_le_bytes());
-    expected.extend(first.to_byte_array());
+    expected.extend(unspent_since.to_byte_array());
     expected.extend(20u32.to_le_bytes());
-    expected.extend(last.to_byte_array());
+    expected.extend(unspent_at.to_byte_array());
     expected.extend(12_345u64.to_le_bytes());
     expected.extend(digest.to_byte_array());
     expected.extend([0xab; 32]);
@@ -55,7 +55,7 @@ fn claim_bytes_and_json_follow_the_documented_layout() -> Result<()> {
     // A verifier rebuilds the claim from the network, heights, and minimum it names.
     assert_eq!(Network::from(parsed.network()), Network::Regtest);
     let rebuilt = Claim::new(
-        &context(parsed.first_height(), parsed.last_height())?,
+        &context(parsed.unspent_since(), parsed.unspent_at())?,
         parsed.minimum_sats(),
         parsed.nonce(),
     );
@@ -64,8 +64,8 @@ fn claim_bytes_and_json_follow_the_documented_layout() -> Result<()> {
         serde_json::to_value(&claim)?,
         json!({
             "network": "regtest",
-            "first": {"height": 10, "hash": first},
-            "last": {"height": 20, "hash": last},
+            "unspent_since": {"height": 10, "hash": unspent_since},
+            "unspent_at": {"height": 20, "hash": unspent_at},
             "minimum_sats": 12_345,
             "context_digest": digest,
             "nonce": "ab".repeat(32),

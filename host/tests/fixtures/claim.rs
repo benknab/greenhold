@@ -33,7 +33,7 @@ pub fn signed(script: ScriptType, format: Format) -> Result<(ClaimInput, Claim)>
         BlockEndpoint::new(Network::Regtest, 20, header)?,
         AccumulatorState::new(1, vec![coin.leaf_hash()])?,
     )?;
-    let witness = CoinWitness::new(coin, context.last().hash(), 0, vec![])?;
+    let witness = CoinWitness::new(coin, context.unspent_at().hash(), 0, vec![])?;
     let minimum = MinimumAmount::try_from(VALUE)?;
     let nonce = "ab".repeat(32).parse()?;
     let claim = Claim::new(&context, minimum, nonce);

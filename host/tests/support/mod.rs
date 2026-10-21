@@ -146,10 +146,10 @@ pub fn wait_for(description: &str, mut ready: impl FnMut() -> Result<bool>) -> R
 
 /// Independent encoding of the public context commitment from raw node data.
 /// Do not call `ChainContext::digest` or the production RPC client as the oracle.
-pub fn context_digest(node: &Node, first: u32, last: u32) -> Result<String> {
-    let first_hash = node.rpc("getblockhash", &json!([first]))?;
-    let last_hash = node.rpc("getblockhash", &json!([last]))?;
-    let roots = node.rpc("getutreexoroots", &json!([last_hash]))?;
+pub fn context_digest(node: &Node, unspent_since: u32, unspent_at: u32) -> Result<String> {
+    let since_hash = node.rpc("getblockhash", &json!([unspent_since]))?;
+    let at_hash = node.rpc("getblockhash", &json!([unspent_at]))?;
+    let roots = node.rpc("getutreexoroots", &json!([at_hash]))?;
     let leaves = roots["numleaves"].as_u64().context("missing leaf count")?;
     assert!(leaves > 0, "the scenario must have a nonempty accumulator");
     let roots: Vec<Vec<u8>> = roots["roots"]
@@ -162,7 +162,7 @@ pub fn context_digest(node: &Node, first: u32, last: u32) -> Result<String> {
     let genesis: BlockHash = genesis.as_str().context("missing genesis hash")?.parse()?;
     let mut preimage = b"greenhold/chain-context/v1\0".to_vec();
     preimage.extend(genesis.to_byte_array());
-    for (height, hash) in [(first, first_hash), (last, last_hash)] {
+    for (height, hash) in [(unspent_since, since_hash), (unspent_at, at_hash)] {
         let header = node.rpc("getblockheader", &json!([hash, false]))?;
         preimage.extend(height.to_le_bytes());
         preimage.extend(Vec::<u8>::from_hex(

@@ -38,7 +38,7 @@ fn prepared_claim_survives_signing_delay_and_spending_but_not_a_reorg() -> Resul
             claim,
             "--outpoint",
             &input,
-            "--first-height",
+            "--unspent-since",
             "433",
             "--minimum-sats",
             "2000000000",
@@ -100,7 +100,10 @@ fn prepared_claim_survives_signing_delay_and_spending_but_not_a_reorg() -> Resul
     assert_verify_fails_closed(&node, &receipt_path)?;
 
     // A completed reorg across T invalidates chain acceptance, not the proof seal.
-    node.rpc("invalidateblock", &json!([report["claim"]["last"]["hash"]]))?;
+    node.rpc(
+        "invalidateblock",
+        &json!([report["claim"]["unspent_at"]["hash"]]),
+    )?;
     node.rpc("generate", &json!([4]))?;
     rejection(
         &command(&node, "regtest", "verify", &["--receipt", receipt])?,
@@ -145,9 +148,9 @@ fn assert_new_claim_uses_tip(node: &Node, input: &str, directory: &Path) -> Resu
         "--output",
         claim.to_str().context("path")?,
     ];
-    for (extra, first) in [
+    for (extra, unspent_since) in [
         (vec!["--json"], 434),
-        (vec!["--json", "--first-height", "433"], 433),
+        (vec!["--json", "--unspent-since", "433"], 433),
     ] {
         let report = success(&command(
             node,
@@ -155,14 +158,14 @@ fn assert_new_claim_uses_tip(node: &Node, input: &str, directory: &Path) -> Resu
             "claim",
             &[base.as_slice(), extra.as_slice()].concat(),
         )?)?;
-        assert_claim(node, &report, first, 434, 1)?;
+        assert_claim(node, &report, unspent_since, 434, 1)?;
         assert_claim_file(&claim, &report)?;
         assert!(witness.exists());
     }
     let output = command(node, "regtest", "claim", &base)?;
     let bytes = fs::read(&claim)?;
     let parsed = Claim::try_from(bytes.as_slice())?;
-    assert_eq!(parsed.first_height(), 434);
+    assert_eq!(parsed.unspent_since(), 434);
     assert_human_report(&output, &json!({"claim": parsed}))?;
     assert!(std::str::from_utf8(&output.stdout)?.contains(&parsed.signing_message()));
     Ok(())
@@ -183,8 +186,8 @@ fn assert_human_report(output: &std::process::Output, report: &Value) -> Result<
     assert!(text.contains("regtest"), "{text}");
     for (label, value) in [
         ("Minimum amount", &report["claim"]["minimum_sats"]),
-        ("First height", &report["claim"]["first"]["height"]),
-        ("Last height", &report["claim"]["last"]["height"]),
+        ("Unspent since", &report["claim"]["unspent_since"]["height"]),
+        ("Unspent at", &report["claim"]["unspent_at"]["height"]),
     ] {
         assert!(text.contains(&format!("{label}: {value}")), "{text}");
     }
@@ -276,12 +279,12 @@ fn assert_preparation_rejects_ineligible(
             "below the minimum",
         ),
         (
-            vec!["--outpoint", outpoint.as_str(), "--first-height", "432"],
-            "cutoff",
+            vec!["--outpoint", outpoint.as_str(), "--unspent-since", "432"],
+            "created after unspent_since",
         ),
         (
-            vec!["--outpoint", outpoint.as_str(), "--first-height", "434"],
-            "first height must not exceed last height",
+            vec!["--outpoint", outpoint.as_str(), "--unspent-since", "434"],
+            "unspent_since must not exceed unspent_at",
         ),
         (
             vec!["--outpoint", young.as_str()],
@@ -391,15 +394,27 @@ fn assert_receipt(report: &Value, file: &[u8], claim: &[u8]) -> Result<()> {
     Ok(())
 }
 
-fn assert_claim(node: &Node, report: &Value, first: u32, last: u32, minimum: u64) -> Result<()> {
+fn assert_claim(
+    node: &Node,
+    report: &Value,
+    unspent_since: u32,
+    unspent_at: u32,
+    minimum: u64,
+) -> Result<()> {
     let claim = &report["claim"];
     assert_eq!(claim["network"], "regtest");
-    for (block, height) in [(&claim["first"], first), (&claim["last"], last)] {
+    for (block, height) in [
+        (&claim["unspent_since"], unspent_since),
+        (&claim["unspent_at"], unspent_at),
+    ] {
         assert_eq!(block["height"], height);
         assert_eq!(block["hash"], node.rpc("getblockhash", &json!([height]))?);
     }
     assert_eq!(claim["minimum_sats"], minimum);
-    assert_eq!(claim["context_digest"], context_digest(node, first, last)?);
+    assert_eq!(
+        claim["context_digest"],
+        context_digest(node, unspent_since, unspent_at)?
+    );
     assert!(claim.get("message_digest").is_none());
     assert_eq!(
         report["image_id"],

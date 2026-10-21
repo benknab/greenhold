@@ -103,12 +103,12 @@ fn deserialization_cannot_bypass_invariants() -> Result<()> {
         AccumulatorState::new(1, vec![[0; 32]])?,
     )?)?;
     for (pointer, replacement) in [
-        ("/first/height", json!(3)),
-        ("/last/network", json!("regtest")),
+        ("/unspent_since/height", json!(3)),
+        ("/unspent_at/network", json!("regtest")),
         ("/state/num_leaves", json!(0)),
         ("/state/num_leaves", json!(1_u64 << 62)),
         ("/state/roots", json!([])),
-        ("/last/header/nonce", json!(0)),
+        ("/unspent_at/header/nonce", json!(0)),
     ] {
         let mut changed = valid.clone();
         let field = changed
@@ -173,8 +173,8 @@ fn rejects_testnets_in_constructors_and_serialized_contexts() -> Result<()> {
         assert!(BlockEndpoint::new(network, 0, genesis_block(network).header).is_err());
         assert!(SupportedNetwork::from_genesis(genesis_block(network).block_hash()).is_err());
         let mut encoded = serde_json::to_value(&context)?;
-        encoded["first"]["network"] = json!(network);
-        encoded["last"]["network"] = json!(network);
+        encoded["unspent_since"]["network"] = json!(network);
+        encoded["unspent_at"]["network"] = json!(network);
         assert!(serde_json::from_value::<ChainContext>(encoded).is_err());
     }
     Ok(())

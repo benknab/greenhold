@@ -61,13 +61,13 @@ fn parse(args: &[&str]) -> Result<ContextOptions> {
 #[test]
 fn claim_context_defaults_and_explicit_connections() -> Result<()> {
     let options = parse(&[])?;
-    assert_eq!(options.first_height, None);
+    assert_eq!(options.unspent_since, None);
     assert_eq!(Network::from(options.network), Network::Bitcoin);
     assert!(options.connections.utreexod_rpc.is_none());
     options.connections.rpc_config()?;
 
     let options = parse(&[
-        "--first-height",
+        "--unspent-since",
         "100",
         "--network",
         "regtest",
@@ -78,7 +78,7 @@ fn claim_context_defaults_and_explicit_connections() -> Result<()> {
         "--utreexod-rpc-password",
         "secret-password",
     ])?;
-    assert_eq!(options.first_height, Some(100));
+    assert_eq!(options.unspent_since, Some(100));
     assert_eq!(Network::from(options.network), Network::Regtest);
     assert_eq!(
         options.connections.utreexod_rpc.as_ref().map(Url::as_str),
@@ -87,8 +87,8 @@ fn claim_context_defaults_and_explicit_connections() -> Result<()> {
     options.connections.rpc_config()?;
     assert!(!format!("{options:?}").contains("secret-password"));
 
-    let options = parse(&["--first-height", "100", "--network", "signet"])?;
-    assert_eq!(options.first_height, Some(100));
+    let options = parse(&["--unspent-since", "100", "--network", "signet"])?;
+    assert_eq!(options.unspent_since, Some(100));
     assert_eq!(Network::from(options.network), Network::Signet);
     Ok(())
 }
@@ -116,7 +116,7 @@ fn incomplete_auth_and_invalid_values_fail_during_parsing() -> Result<()> {
     for (flag, value) in [
         ("--network", "testnet"),
         ("--network", "testnet4"),
-        ("--first-height", "4294967296"),
+        ("--unspent-since", "4294967296"),
     ] {
         assert!(cli(&[flag, value]).is_err());
     }
