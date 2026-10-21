@@ -33,6 +33,7 @@ pub struct Unspent {
     pub tx_hash: Txid,
     pub tx_pos: u32,
     pub height: i32,
+    pub value: u64,
 }
 
 /// Server identity and the negotiated protocol version.

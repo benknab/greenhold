@@ -27,7 +27,7 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// List confirmed unspent outpoints for an address, one per line.
+    /// List confirmed coins with outpoint, value in sats, creation height, and creation block hash.
     Discover(DiscoverOptions),
     /// Prepare a claim and private coin witness to sign (node proofs are tip-only).
     Claim(ClaimOptions),

@@ -41,17 +41,21 @@ fn run(cli: cli::Cli) -> Result<()> {
                 .address
                 .require_network(network)
                 .context("address does not match the requested network")?;
-            let outpoints = if let Some(endpoint) = options.electrum {
-                discover::electrum_outpoints(&address, network, &endpoint)?
+            let coins = if let Some(endpoint) = options.electrum {
+                discover::electrum_coins(&address, network, &endpoint)?
             } else {
                 let rpc = options.connections.rpc_config()?;
-                discover::outpoints(&address, network, &rpc)?
+                discover::coins(&address, network, &rpc)?
             };
             if cli.json {
-                println!("{}", serde_json::to_string_pretty(&outpoints)?);
+                println!("{}", serde_json::to_string_pretty(&coins)?);
             } else {
-                for outpoint in outpoints {
-                    println!("{outpoint}");
+                println!(
+                    "{:<75} {:>16} {:>15} CREATION_HASH",
+                    "OUTPOINT", "VALUE_SATS", "CREATION_HEIGHT"
+                );
+                for coin in coins {
+                    println!("{coin}");
                 }
             }
         }

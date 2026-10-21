@@ -8,9 +8,10 @@ fn discover_checks_address_and_network_before_node_access() -> Result<()> {
     assert!(help.status.success());
     let help = String::from_utf8(help.stdout)?;
     assert!(help.contains("--address <ADDRESS>"));
-    assert!(help.contains("one per line"));
+    assert!(help.contains("value in sats, creation height, and creation block hash"));
     assert!(help.contains("--electrum [<URL>]"));
     assert!(help.contains("--utreexod"));
+    assert!(help.contains("--json"));
     assert!(help.contains("tls://electrum.hospitablealpaca.com:50002"));
     for (address, code, message) in [
         ("not-an-address", 2, "invalid value"),
