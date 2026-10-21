@@ -12,9 +12,9 @@ pub fn image_id() -> Digest {
     Digest::from(GREENHOLD_GUEST_ID)
 }
 
-/// Execute the guest without proving and return its cycle count. The journal must be
-/// exactly the claim the host expects; any other result is a bug, not a rejection.
-pub fn execute(input: &ClaimInput, expected: &Claim) -> Result<u64> {
+/// Execute the guest before proving. The journal must be exactly the expected claim.
+/// Any other result is a bug, not a rejection.
+pub fn execute(input: &ClaimInput, expected: &Claim) -> Result<()> {
     let env = ExecutorEnv::builder().write(input)?.build()?;
     let session = LocalProver::new("local")
         .execute(env, GREENHOLD_GUEST_ELF)
@@ -22,8 +22,7 @@ pub fn execute(input: &ClaimInput, expected: &Claim) -> Result<u64> {
     if session.exit_code != ExitCode::Halted(0) {
         bail!("guest rejected the claim input ({:?})", session.exit_code);
     }
-    check_journal(&session.journal.bytes, expected)?;
-    Ok(session.cycles())
+    check_journal(&session.journal.bytes, expected)
 }
 
 /// Prove the guest and verify the receipt against this guest's image ID. The receipt's

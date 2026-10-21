@@ -57,13 +57,7 @@ fn prepared_claim_survives_signing_delay_and_spending_but_not_a_reorg() -> Resul
     // Sign after advancing the tip. No fresh proof for the frozen T can be fetched.
     node.rpc("generate", &json!([1]))?;
     let signature = sign_claim(&report, &claim_path)?;
-    let dry_run = || prove_dry(&node, claim, witness, &signature);
-    let executed_output = dry_run()?;
-    let executed = success(&executed_output)?;
-    assert_progress(&executed_output, false)?;
-    assert_eq!(executed["claim"], report["claim"]);
     assert_new_claim_uses_tip(&node, &input, directory.path())?;
-    assert_human_dry_run(&node, claim, witness, &signature, &report)?;
 
     // Spend after T, then prove from the saved witness after the spend is confirmed.
     broadcast(
@@ -80,25 +74,10 @@ fn prepared_claim_survives_signing_delay_and_spending_but_not_a_reorg() -> Resul
         node.rpc("gettxout", &json!([funding.compute_txid(), 0, false]))?
             .is_null()
     );
-    let proved_output = command_with_timeout(
-        &node,
-        "regtest",
-        "prove",
-        &[
-            "--json",
-            "--claim",
-            claim,
-            "--witness",
-            witness,
-            "--signature",
-            &signature,
-            "--output",
-            receipt,
-        ],
-        Duration::from_mins(10),
-    )?;
+    let prove = || prove_prepared(&node, claim, witness, &signature, receipt);
+    let proved_output = prove()?;
     let proved = success(&proved_output)?;
-    assert_progress(&proved_output, true)?;
+    assert_progress(&proved_output)?;
     assert_receipt(&proved, &fs::read(receipt)?, &fs::read(claim)?)?;
     assert!(proved.get("cycles").is_none());
     let accepted = json!({"claim": report["claim"],
@@ -117,18 +96,19 @@ fn prepared_claim_survives_signing_delay_and_spending_but_not_a_reorg() -> Resul
         &command(&node, "regtest", "verify", &verify_args)?,
         "claim does not match the node's chain state",
     );
-    rejection(&dry_run()?, "claim does not match the node's chain state");
+    rejection(&prove()?, "claim does not match the node's chain state");
     assert_public_report(&success(&inspect(receipt)?)?, &accepted);
     Ok(())
 }
 
-fn prove_dry(
+fn prove_prepared(
     node: &Node,
     claim: &str,
     witness: &str,
     signature: &str,
+    receipt: &str,
 ) -> Result<std::process::Output> {
-    command(
+    command_with_timeout(
         node,
         "regtest",
         "prove",
@@ -140,8 +120,10 @@ fn prove_dry(
             witness,
             "--signature",
             signature,
-            "--dry-run",
+            "--output",
+            receipt,
         ],
+        Duration::from_mins(10),
     )
 }
 
@@ -203,30 +185,6 @@ fn assert_human_report(output: &std::process::Output, report: &Value) -> Result<
     Ok(())
 }
 
-fn assert_human_dry_run(
-    node: &Node,
-    claim: &str,
-    witness: &str,
-    signature: &str,
-    report: &Value,
-) -> Result<()> {
-    let output = command(
-        node,
-        "regtest",
-        "prove",
-        &[
-            "--claim",
-            claim,
-            "--witness",
-            witness,
-            "--signature",
-            signature,
-            "--dry-run",
-        ],
-    )?;
-    assert_human_report(&output, report)
-}
-
 fn assert_verified_reports(node: &Node, receipt: &str, expected: &Value) -> Result<()> {
     rejection(
         &command(node, "regtest", "verify", &["--json", "--receipt", receipt])?,
@@ -281,7 +239,7 @@ fn assert_public_report(actual: &Value, expected: &Value) {
 }
 
 /// Captured progress stays on stderr and contains no terminal control sequences.
-fn assert_progress(output: &std::process::Output, proved: bool) -> Result<()> {
+fn assert_progress(output: &std::process::Output) -> Result<()> {
     let stderr = std::str::from_utf8(&output.stderr)?;
     assert!(!stderr.contains(['\u{1b}', '\r']), "{stderr}");
     let stages = [
@@ -292,9 +250,8 @@ fn assert_progress(output: &std::process::Output, proved: bool) -> Result<()> {
         "Checking receipt",
         "Saving receipt",
     ];
-    let count = if proved { stages.len() } else { 3 };
     let mut remaining = stderr;
-    for stage in &stages[..count] {
+    for stage in stages {
         let (_, rest) = remaining
             .split_once(&format!("{stage}...\n"))
             .with_context(|| format!("missing {stage} start in stderr:\n{stderr}"))?;
@@ -302,9 +259,6 @@ fn assert_progress(output: &std::process::Output, proved: bool) -> Result<()> {
             .split_once(&format!("{stage}: done ("))
             .with_context(|| format!("missing {stage} completion in stderr:\n{stderr}"))?;
         remaining = rest;
-    }
-    if !proved {
-        assert!(!stderr.contains("Generating proof"), "{stderr}");
     }
     Ok(())
 }

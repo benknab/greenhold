@@ -9,7 +9,6 @@ use std::path::Path;
 #[serde(rename_all = "snake_case")]
 pub enum Status {
     Prepared,
-    Executed,
     Proved,
     Verified,
     Inspected,
@@ -32,8 +31,6 @@ pub struct Report<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub receipt_bytes: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub cycles: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub nonce_text: Option<&'a str>,
 }
 
@@ -49,7 +46,6 @@ impl<'a> Report<'a> {
             address: None,
             receipt: None,
             receipt_bytes: None,
-            cycles: None,
             nonce_text: None,
         }
     }
@@ -61,7 +57,6 @@ impl<'a> Report<'a> {
         }
         let heading = match self.status {
             Status::Prepared => "Claim prepared",
-            Status::Executed => "Dry run completed",
             Status::Proved => "Receipt created",
             Status::Verified => "Proof and chain state verified",
             Status::Inspected => "Proof checked; chain state not checked",
@@ -91,9 +86,6 @@ impl<'a> Report<'a> {
         }
         if let Some(bytes) = self.receipt_bytes {
             println!("Receipt size: {bytes} bytes");
-        }
-        if let Some(cycles) = self.cycles {
-            println!("Cycles: {cycles}");
         }
         if let Some(address) = &self.address {
             println!(

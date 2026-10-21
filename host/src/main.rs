@@ -139,24 +139,17 @@ fn prove(options: cli::ProveOptions, json: bool) -> Result<()> {
         options.signature,
     );
     // Execution is fast, so a rejected input fails before the slow proving step.
-    let cycles = progress::run("Executing guest", || guest::execute(&input, &claim))?;
-    let mut report = Report::new(&claim, Status::Executed);
-    if let Some(path) = &options.output {
-        let receipt = guest::prove(&input, &claim)?;
-        let size = progress::run("Saving receipt", || {
-            let bytes = receipt::encode(&receipt)?;
-            fs::write(path, &bytes)
-                .with_context(|| format!("cannot write receipt to {}", path.display()))?;
-            Ok(bytes.len())
-        })?;
-        report = Report::new(&claim, Status::Proved);
-        report.receipt = Some(path);
-        report.receipt_bytes = Some(size);
-    } else {
-        // The cycle count depends on the private coin. Only a dry run, which makes
-        // no receipt to share, reports it.
-        report.cycles = Some(cycles);
-    }
+    progress::run("Executing guest", || guest::execute(&input, &claim))?;
+    let receipt = guest::prove(&input, &claim)?;
+    let size = progress::run("Saving receipt", || {
+        let bytes = receipt::encode(&receipt)?;
+        fs::write(&options.output, &bytes)
+            .with_context(|| format!("cannot write receipt to {}", options.output.display()))?;
+        Ok(bytes.len())
+    })?;
+    let mut report = Report::new(&claim, Status::Proved);
+    report.receipt = Some(&options.output);
+    report.receipt_bytes = Some(size);
     report.print(json)?;
     Ok(())
 }

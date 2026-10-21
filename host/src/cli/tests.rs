@@ -178,21 +178,17 @@ fn claim_minimum_parses_into_the_domain_range() -> Result<()> {
 }
 
 #[test]
-fn prove_needs_exactly_one_of_output_and_dry_run() -> Result<()> {
+fn prove_requires_output_and_rejects_dry_run() -> Result<()> {
     let Command::Prove(options) = prove(&["--output", "claim.receipt"])?.command else {
         bail!("expected prove command");
     };
-    assert_eq!(options.output, Some(PathBuf::from("claim.receipt")));
+    assert_eq!(options.output, PathBuf::from("claim.receipt"));
     assert_eq!(options.claim, PathBuf::from("coin.claim"));
-    let Command::Prove(options) = prove(&["--dry-run"])?.command else {
-        bail!("expected prove command");
-    };
-    assert_eq!(options.output, None);
     for (extra, kind) in [
         (&[][..], clap::error::ErrorKind::MissingRequiredArgument),
         (
             &["--dry-run", "--output", "claim.receipt"][..],
-            clap::error::ErrorKind::ArgumentConflict,
+            clap::error::ErrorKind::UnknownArgument,
         ),
     ] {
         let error = prove(extra).err().context("invalid flags accepted")?;
@@ -203,9 +199,16 @@ fn prove_needs_exactly_one_of_output_and_dry_run() -> Result<()> {
 
 #[test]
 fn prove_needs_a_witness_and_well_formed_signature() -> Result<()> {
-    // Replace or drop one flag of SIGNED, then parse a dry run.
+    // Replace or drop one flag of SIGNED, then parse a prove command.
     let parse = |flag: &str, value: Option<&str>| -> Result<clap::error::ErrorKind> {
-        let mut args = vec!["host", "prove", "--claim", "coin.claim", "--dry-run"];
+        let mut args = vec![
+            "host",
+            "prove",
+            "--claim",
+            "coin.claim",
+            "--output",
+            "claim.receipt",
+        ];
         for pair in SIGNED.chunks(2) {
             match (pair, value) {
                 ([name, _], Some(value)) if *name == flag => args.extend([flag, value]),
@@ -285,9 +288,13 @@ fn claim_requires_output_and_json_is_global() -> Result<()> {
         ])?
         .json
     );
-    let error = Cli::try_parse_from(["host", "prove", "--dry-run"].into_iter().chain(SIGNED))
-        .err()
-        .context("missing claim input accepted")?;
+    let error = Cli::try_parse_from(
+        ["host", "prove", "--output", "claim.receipt"]
+            .into_iter()
+            .chain(SIGNED),
+    )
+    .err()
+    .context("missing claim input accepted")?;
     assert_eq!(
         error.kind(),
         clap::error::ErrorKind::MissingRequiredArgument

@@ -1,5 +1,5 @@
 use crate::support::{
-    Node, WALLET_ADDRESS, command, image, rejection, sign_claim, success,
+    Node, WALLET_ADDRESS, command, image, rejection, success,
     transactions::{broadcast, mined, spend},
 };
 use anyhow::{Context, Result};
@@ -67,7 +67,7 @@ fn discover_human(node: &Node, address: &Address) -> Result<Vec<DiscoveredCoin>>
 
 #[test]
 #[ignore = "requires Docker; runs Utreexod nodes"]
-fn discovery_lists_confirmed_coins_across_pages_and_feeds_the_prover() -> Result<()> {
+fn discovery_lists_confirmed_coins_across_pages_and_prepares_a_claim() -> Result<()> {
     let image = image()?;
     let mining = Address::p2wsh(&ScriptBuf::from_bytes(vec![0x51]), Network::Regtest);
     let destination = WALLET_ADDRESS
@@ -141,7 +141,7 @@ fn discovery_lists_confirmed_coins_across_pages_and_feeds_the_prover() -> Result
         creation_hash
     }));
     assert_eq!(mining_coins.len(), 1_233);
-    prove_discovered(&node, outputs.first().context("discovered coin")?.outpoint)?;
+    prepare_discovered(&node, outputs.first().context("discovered coin")?.outpoint)?;
     // An unused address is an empty result, even when other addresses have history.
     let unused = Address::p2wsh(&ScriptBuf::from_bytes(vec![0x52]), Network::Regtest);
     assert!(discover(&node, &unused)?.is_empty());
@@ -199,7 +199,7 @@ fn mined_coins(node: &Node, blocks: &Value, script: &ScriptBuf) -> Result<Vec<Di
     Ok(coins)
 }
 
-fn prove_discovered(node: &Node, outpoint: OutPoint) -> Result<()> {
+fn prepare_discovered(node: &Node, outpoint: OutPoint) -> Result<()> {
     let directory = tempfile::tempdir()?;
     let witness_path = directory.path().join("coin.witness");
     let claim_path = directory.path().join("coin.claim");
@@ -225,22 +225,6 @@ fn prove_discovered(node: &Node, outpoint: OutPoint) -> Result<()> {
     let parsed = greenhold_core::claim::Claim::try_from(bytes.as_slice())?;
     assert_eq!(serde_json::to_value(parsed)?, report["claim"]);
     assert!(report.get("encoded").is_none());
-    let signature = sign_claim(&report, &claim_path)?;
-    let report = success(&command(
-        node,
-        "regtest",
-        "prove",
-        &[
-            "--json",
-            "--claim",
-            claim,
-            "--witness",
-            witness,
-            "--signature",
-            &signature,
-            "--dry-run",
-        ],
-    )?)?;
     assert_eq!(report["claim"]["minimum_sats"], 2_000_000_000_u64);
     Ok(())
 }

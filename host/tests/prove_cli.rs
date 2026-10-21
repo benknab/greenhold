@@ -30,7 +30,7 @@ fn claim_and_prove_explain_the_prepared_signing_flow() -> Result<()> {
                 "--claim <FILE>",
                 "--witness <FILE>",
                 "--signature <SIGNATURE>",
-                "--dry-run",
+                "--output <FILE>",
             ],
         ),
         ("verify", vec!["--receipt <FILE>", "--nonce <TEXT>"]),
@@ -42,6 +42,7 @@ fn claim_and_prove_explain_the_prepared_signing_flow() -> Result<()> {
         assert!(help.contains("--json"), "{help}");
         assert!(!help.contains("--unspent-at"), "{help}");
         assert!(!help.contains("--claim-file"), "{help}");
+        assert!(!help.contains("--dry-run"), "{help}");
         if command == "verify" {
             assert!(!help.contains("--claim"), "{help}");
         }
@@ -63,7 +64,8 @@ fn prove_rejects_a_separate_nonce_option() -> Result<()> {
             "missing.witness",
             "--signature",
             "smpAA==",
-            "--dry-run",
+            "--output",
+            "claim.receipt",
         ])
         .output()?;
     assert_eq!(output.status.code(), Some(2));
@@ -147,12 +149,13 @@ fn prove_checks_the_claim_signature_before_node_access() -> Result<()> {
             .arg(&claim_path)
             .arg("--witness")
             .arg(&witness_path)
+            .arg("--output")
+            .arg(directory.path().join("claim.receipt"))
             .args([
                 "--signature",
                 signature,
                 "--network",
                 network,
-                "--dry-run",
                 "--utreexod-rpc",
                 "http://127.0.0.1:9/",
                 "--utreexod-rpc-user",
@@ -238,12 +241,13 @@ fn prove_rejects_malformed_claim_files_before_witness_or_node_access() -> Result
         let output = Command::new(env!("CARGO_BIN_EXE_greenhold-host"))
             .args(["prove", "--claim"])
             .arg(&claim)
+            .arg("--output")
+            .arg(directory.path().join("claim.receipt"))
             .args([
                 "--witness",
                 "missing.witness",
                 "--signature",
                 "smpAA==",
-                "--dry-run",
                 "--utreexod-rpc",
                 "http://127.0.0.1:9/",
                 "--utreexod-rpc-user",

@@ -108,12 +108,8 @@ pub struct ProveOptions {
     pub signature: Signature,
 
     /// Receipt file to write. Replaces an existing file.
-    #[arg(long, value_name = "FILE", required_unless_present = "dry_run")]
-    pub output: Option<PathBuf>,
-
-    /// Run the guest without proving, and write no receipt.
-    #[arg(long, conflicts_with = "output")]
-    pub dry_run: bool,
+    #[arg(long, value_name = "FILE")]
+    pub output: PathBuf,
 
     /// Bitcoin network the claim must name: bitcoin, signet, or regtest.
     #[arg(long, default_value = "bitcoin")]
