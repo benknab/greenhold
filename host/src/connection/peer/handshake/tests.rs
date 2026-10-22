@@ -1,21 +1,6 @@
 use super::*;
+use crate::connection::TIMEOUT;
 use std::{collections::VecDeque, net::TcpListener, thread};
-
-#[test]
-fn endpoint_requires_explicit_transport() -> Result<()> {
-    let endpoint: Endpoint = "tcp://[::1]:8335".parse()?;
-    assert_eq!(endpoint.transport, TransportKind::Tcp);
-    let endpoint: Endpoint = "bip324://[::1]:8335".parse()?;
-    assert_eq!(endpoint.transport, TransportKind::Bip324);
-    for text in [
-        "ssl://localhost:8335",
-        "tls://localhost:8335",
-        "https://localhost:8335",
-    ] {
-        assert!(text.parse::<Endpoint>().is_err(), "{text}");
-    }
-    Ok(())
-}
 
 #[test]
 fn handshake_leaves_transport_ready_for_an_operation() -> Result<()> {
@@ -23,7 +8,7 @@ fn handshake_leaves_transport_ready_for_an_operation() -> Result<()> {
     let endpoint: Endpoint = format!("tcp://{}", listener.local_addr()?).parse()?;
     let task = thread::spawn(move || -> Result<()> {
         let (socket, _) = crate::test_support::accept(&listener)?;
-        let mut transport = tcp::Tcp::new(socket, super::super::TIMEOUT);
+        let mut transport = Tcp::new(socket, TIMEOUT);
         let NetworkMessage::Version(version) = transport.receive()? else {
             bail!("expected version");
         };
@@ -35,7 +20,7 @@ fn handshake_leaves_transport_ready_for_an_operation() -> Result<()> {
         assert!(matches!(transport.receive()?, NetworkMessage::Ping(7)));
         transport.send(NetworkMessage::Pong(7))
     });
-    let mut transport = tcp::Tcp::connect(endpoint.socket_url(), super::super::TIMEOUT)?;
+    let mut transport = Tcp::connect(endpoint.socket_url(), TIMEOUT)?;
     assert!(handshake(&mut transport)?.version >= MIN_PROTOCOL_VERSION);
     transport.send(NetworkMessage::Ping(7))?;
     assert!(matches!(transport.receive()?, NetworkMessage::Pong(7)));

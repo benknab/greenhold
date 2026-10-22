@@ -1,4 +1,5 @@
 use super::super::super::TIMEOUT;
+use super::super::handshake;
 use super::*;
 use crate::{connection::peer, test_support};
 use std::{
@@ -76,7 +77,7 @@ fn reply_to_pings(mut remote: Remote) -> Result<()> {
 fn encrypted_handshake_and_reuse_cross_rekey_boundary() -> Result<()> {
     let (endpoint, task) = serve(reply_to_pings)?;
     let mut transport = Bip324::connect(endpoint.socket_url(), TIMEOUT)?;
-    assert_eq!(peer::handshake(&mut transport)?.start_height, 123);
+    assert_eq!(handshake::handshake(&mut transport)?.start_height, 123);
     for nonce in 0..230 {
         transport.send(NetworkMessage::Ping(nonce))?;
         assert_eq!(transport.receive()?, NetworkMessage::Pong(nonce));

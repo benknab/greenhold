@@ -1,7 +1,7 @@
 use super::{
     super::socket::{self, SocketUrl},
-    Transport,
     deadline::DeadlineStream,
+    transport::Transport,
 };
 use anyhow::{Context, Result, bail};
 use bitcoin::{
