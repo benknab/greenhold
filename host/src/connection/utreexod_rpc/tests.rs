@@ -178,20 +178,45 @@ fn transport_rejections_are_specific_and_redact_remote_values() -> Result<()> {
 
 #[test]
 fn address_search_preserves_options_and_distinguishes_exhaustion_from_failures() -> Result<()> {
-    for (vin_extra, reverse, code) in [
-        (false, false, -5),
-        (true, false, -5),
-        (false, true, -5),
-        (true, true, -5),
-        (false, false, -1),
-        (false, false, -32601),
+    for (input_details, order, vin_extra, reverse, code) in [
+        (InputDetails::Omit, HistoryOrder::OldestFirst, 0, false, -5),
+        (
+            InputDetails::Include,
+            HistoryOrder::OldestFirst,
+            1,
+            false,
+            -5,
+        ),
+        (InputDetails::Omit, HistoryOrder::NewestFirst, 0, true, -5),
+        (
+            InputDetails::Include,
+            HistoryOrder::NewestFirst,
+            1,
+            true,
+            -5,
+        ),
+        (InputDetails::Omit, HistoryOrder::OldestFirst, 0, false, -1),
+        (
+            InputDetails::Omit,
+            HistoryOrder::OldestFirst,
+            0,
+            false,
+            -32601,
+        ),
     ] {
         let request = json!({"jsonrpc":"1.0","id":1,"method":"searchrawtransactions",
-            "params":["address",1,100,100,u8::from(vin_extra),reverse]});
+            "params":["address",1,100,100,vin_extra,reverse]});
         let body = json!({"id":1,"error":{"code":code,"message":"private address"}});
         let (config, task) = serve("200 OK", vec![(request, body.to_string())], false)?;
-        let result =
-            Client::new(&config).search_raw_transactions("address", 100, 100, vin_extra, reverse);
+        let result = Client::new(&config).search_raw_transactions(
+            "address",
+            SearchOptions {
+                skip: 100,
+                count: 100,
+                input_details,
+                order,
+            },
+        );
         task.join().map_err(|_| anyhow!("RPC mock panicked"))??;
         if code == -5 {
             assert!(result?.is_empty());

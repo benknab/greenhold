@@ -1,6 +1,6 @@
 use super::{
-    AddressTransaction, BlockHeaderResponse, BlockLocation, ChainTipProof, Config, Roots,
-    TxOutResponse,
+    AddressTransaction, BlockHeaderResponse, BlockLocation, ChainTipProof, Config, HistoryOrder,
+    InputDetails, Roots, SearchOptions, TxOutResponse,
 };
 use crate::connection::{
     TIMEOUT,
@@ -113,14 +113,18 @@ impl<'a> Client<'a> {
     pub fn search_raw_transactions(
         &mut self,
         address: &str,
-        skip: u32,
-        count: u32,
-        vin_extra: bool,
-        reverse: bool,
+        options: SearchOptions,
     ) -> Result<Vec<AddressTransaction>> {
         match self.call_with_timeout(
             "searchrawtransactions",
-            (address, 1, skip, count, u8::from(vin_extra), reverse),
+            (
+                address,
+                1,
+                options.skip,
+                options.count,
+                u8::from(options.input_details == InputDetails::Include),
+                options.order == HistoryOrder::NewestFirst,
+            ),
             BULK_TIMEOUT,
         ) {
             // Utreexod uses ErrRPCNoTxInfo for unused addresses and exhausted pages.

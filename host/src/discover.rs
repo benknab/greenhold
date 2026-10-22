@@ -85,7 +85,15 @@ pub fn coins(
     let mut skip = 0;
     loop {
         let page = rpc
-            .search_raw_transactions(&address, skip, PAGE_SIZE, false, false)
+            .search_raw_transactions(
+                &address,
+                utreexod_rpc::SearchOptions {
+                    skip,
+                    count: PAGE_SIZE,
+                    input_details: utreexod_rpc::InputDetails::Omit,
+                    order: utreexod_rpc::HistoryOrder::OldestFirst,
+                },
+            )
             .context("cannot search address transactions; node needs --addrindex and RPC access")?;
         let count = u32::try_from(page.len())?;
         // Confirmed history is oldest-first, including transaction order within a block.
