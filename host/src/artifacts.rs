@@ -1,11 +1,10 @@
 //! Prepared public claims and private coin witnesses. Neither file is trusted state.
 
 use anyhow::{Context as _, Result, bail};
-use bincode::Options as _;
+use bincode::{DefaultOptions, Options};
 use greenhold_core::claim::Claim;
 use greenhold_core::coin::CoinWitness;
 use std::fs::File;
-use std::io::Read as _;
 use std::path::Path;
 
 // Canonical claim bytes include the domain and version tag.
@@ -37,13 +36,15 @@ pub fn encode_witness(witness: &CoinWitness) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
-fn options() -> impl bincode::Options {
-    bincode::DefaultOptions::new()
+fn options() -> impl Options {
+    DefaultOptions::new()
         .with_fixint_encoding()
         .with_limit(MAX_WITNESS_BYTES - WITNESS_TAG.len() as u64)
 }
 
 fn read(path: &Path, limit: u64) -> Result<Vec<u8>> {
+    use std::io::Read as _;
+
     let file = File::open(path).with_context(|| format!("cannot open {}", path.display()))?;
     let mut bytes = Vec::new();
     file.take(limit + 1).read_to_end(&mut bytes)?;

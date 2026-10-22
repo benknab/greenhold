@@ -5,8 +5,7 @@ use crate::eligibility::MinimumAmount;
 use crate::network::SupportedNetwork;
 use anyhow::{Context as _, Result, bail};
 use bitcoin::blockdata::constants;
-use bitcoin::hashes::{Hash, HashEngine as _, sha256};
-use bitcoin::hex::{DisplayHex as _, FromHex as _};
+use bitcoin::hashes::{Hash, sha256};
 use bitcoin::{BlockHash, Network};
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -26,6 +25,8 @@ impl Nonce {
     /// Preserve whitespace and case. Empty text does not provide a fresh challenge.
     #[must_use]
     pub fn from_text(text: &str) -> Self {
+        use bitcoin::hashes::HashEngine as _;
+
         let mut engine = sha256::Hash::engine();
         engine.input(b"greenhold/nonce/v1\0");
         engine.input(text.as_bytes());
@@ -43,6 +44,8 @@ impl FromStr for Nonce {
     type Err = anyhow::Error;
 
     fn from_str(text: &str) -> Result<Self> {
+        use bitcoin::hex::FromHex as _;
+
         Ok(Self(<[u8; 32]>::from_hex(text).context(
             "nonce must contain exactly 64 hexadecimal characters",
         )?))
@@ -65,6 +68,8 @@ impl From<Nonce> for String {
 
 impl fmt::Display for Nonce {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use bitcoin::hex::DisplayHex as _;
+
         write!(f, "{}", self.0.as_hex())
     }
 }

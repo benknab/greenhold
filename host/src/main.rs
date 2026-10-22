@@ -14,7 +14,6 @@ mod verify;
 mod test_support;
 
 use anyhow::{Context as _, Result, bail};
-use clap::{CommandFactory, FromArgMatches};
 use greenhold_core::claim::Claim;
 use greenhold_core::eligibility::EligibleCoin;
 use greenhold_core::input::ClaimInput;
@@ -24,6 +23,8 @@ use std::fs;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
+    use clap::{CommandFactory as _, FromArgMatches as _};
+
     // Receipts verify only against the guest image ID built into this binary.
     let version = format!(
         "{}\nguest image ID: {}",

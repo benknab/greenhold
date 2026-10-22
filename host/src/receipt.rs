@@ -1,8 +1,7 @@
 use anyhow::{Context as _, Result, bail};
-use bincode::Options as _;
+use bincode::{DefaultOptions, Options};
 use risc0_zkvm::Receipt;
 use std::fs::File;
-use std::io::Read as _;
 use std::path::Path;
 
 const TAG: &[u8] = b"greenhold/receipt/v1\0";
@@ -12,8 +11,8 @@ const MAX_FILE_BYTES: u64 = 1 << 20;
 
 /// The `bincode::serialize` format, with no trailing bytes. The limit keeps a whole
 /// file within `MAX_FILE_BYTES`, so `prove` never writes a file that `read` rejects.
-fn options() -> impl bincode::Options {
-    bincode::DefaultOptions::new()
+fn options() -> impl Options {
+    DefaultOptions::new()
         .with_fixint_encoding()
         .with_limit(MAX_FILE_BYTES - TAG.len() as u64)
 }
@@ -27,6 +26,8 @@ pub fn encode(receipt: &Receipt) -> Result<Vec<u8>> {
 
 /// Read and decode a receipt file. Decoding checks the format only, not the proof.
 pub fn read(path: &Path) -> Result<Receipt> {
+    use std::io::Read as _;
+
     let file =
         File::open(path).with_context(|| format!("cannot read receipt {}", path.display()))?;
     let mut bytes = Vec::new();

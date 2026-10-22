@@ -6,6 +6,7 @@ use serde_json::{Value, json};
 use std::io::{BufReader, Write};
 use std::net::TcpListener;
 use std::thread;
+use url::Url;
 
 const BLOCK: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
 

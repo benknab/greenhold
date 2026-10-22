@@ -1,6 +1,6 @@
 use anyhow::Result;
 use indicatif::{ProgressBar, ProgressStyle};
-use std::io::{self, IsTerminal as _};
+use std::io;
 use std::time::{Duration, Instant};
 
 /// Show a blocking stage on stderr without changing the command's stdout report.
@@ -18,6 +18,8 @@ struct Stage {
 
 impl Stage {
     fn start(label: &'static str) -> Result<Self> {
+        use std::io::IsTerminal as _;
+
         let spinner = if io::stderr().is_terminal() {
             let style =
                 ProgressStyle::with_template("{spinner} {msg} [{elapsed_precise} elapsed]")?;

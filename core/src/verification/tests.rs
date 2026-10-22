@@ -1,4 +1,7 @@
-use crate::test_support::signatures::*;
+use crate::test_support::signatures::{
+    MESSAGE, P2PKH, P2PKH_FULL, P2PKH_LEGACY, P2SH_P2WPKH, P2SH_P2WPKH_FULL, P2TR, P2TR_FULL,
+    P2TR_SIMPLE, P2WPKH, P2WPKH_FULL, P2WPKH_SIMPLE,
+};
 use anyhow::{Context as _, Result};
 use bitcoin::base64::Engine as _;
 use bitcoin::base64::engine::general_purpose::STANDARD;

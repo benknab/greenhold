@@ -6,13 +6,11 @@ use crate::connection::TIMEOUT;
 use crate::connection::header::HeaderResponse;
 use crate::connection::json_rpc::{Request, Response, ServerError};
 use anyhow::{Result, anyhow, bail};
-use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use bitcoin::block::Header;
 use bitcoin::{BlockHash, OutPoint, Txid};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use std::io::Read;
 use std::time::Duration;
 use ureq::Agent;
 use ureq::http::HeaderValue;
@@ -171,6 +169,9 @@ impl<'a> Client<'a> {
     }
 
     fn send(&self, body: Vec<u8>, timeout: Duration) -> Result<Vec<u8>> {
+        use base64::Engine as _;
+        use std::io::Read as _;
+
         let mut request = self
             .agent
             .post(self.config.url.as_str())
