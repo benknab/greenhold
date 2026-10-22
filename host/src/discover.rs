@@ -46,7 +46,8 @@ pub fn electrum_coins(
     let candidates = client.list_unspent(&address.script_pubkey())?;
     let mut hashes = BTreeMap::new();
     let mut coins = BTreeMap::new();
-    for coin in candidates.into_iter().filter(|coin| coin.height > 0) {
+    let confirmed = candidates.into_iter().filter(|coin| coin.height > 0);
+    for coin in confirmed {
         let creation_height = u32::try_from(coin.height)?;
         let creation_hash = cached_hash(&mut hashes, creation_height, |height| {
             Ok(client.block_header(height)?.block_hash())
@@ -98,7 +99,8 @@ pub fn coins(
         let count = u32::try_from(page.len())?;
         // Confirmed history is oldest-first, including transaction order within a block.
         // Remove spends as we go, so gettxout runs only for the surviving candidates.
-        for transaction in page.into_iter().filter(|tx| tx.confirmations > 0) {
+        let confirmed = page.into_iter().filter(|tx| tx.confirmations > 0);
+        for transaction in confirmed {
             for spent in transaction.vin {
                 candidates.remove(&spent);
             }
@@ -123,11 +125,11 @@ pub fn coins(
     let candidates: Vec<_> = candidates.into_iter().collect();
     for batch in candidates.chunks(COIN_BATCH_SIZE) {
         let outputs = rpc.tx_outs(batch, false)?;
-        for (candidate, output) in batch
+        let present = batch
             .iter()
             .zip(outputs)
-            .filter_map(|(candidate, output)| output.map(|output| (candidate, output)))
-        {
+            .filter_map(|(candidate, output)| output.map(|output| (candidate, output)));
+        for (candidate, output) in present {
             if output.best_block != tip.hash {
                 bail!("chain tip changed during discovery; run discover again");
             }

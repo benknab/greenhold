@@ -78,18 +78,16 @@ impl<'a> Client<'a> {
             return Ok(Vec::new());
         }
         let first_id = self.id + 1;
-        let requests: Vec<_> = outpoints
-            .iter()
-            .map(|outpoint| {
-                self.id += 1;
-                Request {
-                    jsonrpc: Some("2.0"),
-                    id: self.id,
-                    method: "gettxout",
-                    params: (outpoint.txid, outpoint.vout, include_mempool),
-                }
-            })
-            .collect();
+        let mut requests = Vec::with_capacity(outpoints.len());
+        for outpoint in outpoints {
+            self.id += 1;
+            requests.push(Request {
+                jsonrpc: Some("2.0"),
+                id: self.id,
+                method: "gettxout",
+                params: (outpoint.txid, outpoint.vout, include_mempool),
+            });
+        }
         let bytes = self.send(serde_json::to_vec(&requests)?, BULK_TIMEOUT)?;
         let mut replies = Response::parse_batch(&bytes)?;
         replies.sort_unstable_by_key(|reply| reply.id);
