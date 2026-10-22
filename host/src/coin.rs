@@ -27,7 +27,7 @@ pub fn fetch(
     }
     let creation_height = creation_height(output.confirmations, observed.height)?;
     let creation_hash = rpc.block_hash(creation_height)?;
-    let coin = Coin::new(
+    let coin = Coin::try_new(
         outpoint,
         creation_hash,
         creation_height,
@@ -43,7 +43,7 @@ pub fn fetch(
     let proved_at = proof.proved_at_hash;
     let witness = bind(coin, proof)?;
     let context = context::fetch_at(network, unspent_since, config, proved_at)?;
-    let coin = EligibleCoin::new(witness, &context, minimum)?;
+    let coin = EligibleCoin::try_new(witness, &context, minimum)?;
     Ok((context, coin))
 }
 
@@ -66,7 +66,7 @@ fn bind(coin: Coin, proof: utreexod_rpc::ChainTipProof) -> Result<CoinWitness> {
     if leaf.to_byte_array() != coin.leaf_hash() {
         bail!("RPC proven leaf does not match reconstructed coin");
     }
-    CoinWitness::new(
+    CoinWitness::try_new(
         coin,
         proof.proved_at_hash,
         *target,

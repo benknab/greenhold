@@ -31,7 +31,7 @@ impl Coin {
     ///
     /// # Errors
     /// Rejects a null outpoint, unrepresentable height, amount, or oversized script.
-    pub fn new(
+    pub fn try_new(
         outpoint: OutPoint,
         creation_block_hash: BlockHash,
         creation_height: u32,
@@ -86,7 +86,7 @@ impl Coin {
 impl TryFrom<CoinFields> for Coin {
     type Error = anyhow::Error;
     fn try_from(fields: CoinFields) -> Result<Self> {
-        Self::new(
+        Self::try_new(
             fields.outpoint,
             fields.creation_block_hash,
             fields.creation_height,
@@ -119,7 +119,7 @@ impl CoinWitness {
     ///
     /// # Errors
     /// Rejects paths or target rows outside the supported forest range.
-    pub fn new(
+    pub fn try_new(
         coin: Coin,
         proved_at: BlockHash,
         target: u64,
@@ -202,7 +202,7 @@ impl CoinWitness {
 impl TryFrom<WitnessFields> for CoinWitness {
     type Error = anyhow::Error;
     fn try_from(fields: WitnessFields) -> Result<Self> {
-        Self::new(fields.coin, fields.proved_at, fields.target, fields.hashes)
+        Self::try_new(fields.coin, fields.proved_at, fields.target, fields.hashes)
     }
 }
 

@@ -35,7 +35,7 @@ pub fn context(
     claim: &Claim,
     rpc: &utreexod_rpc::Config,
 ) -> Result<greenhold_core::context::ChainContext> {
-    let input = context::Input::new(
+    let input = context::Input::try_new(
         claim.network().into(),
         Some(claim.unspent_since()),
         Some(claim.unspent_at()),

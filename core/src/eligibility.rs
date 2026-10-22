@@ -70,7 +70,7 @@ impl EligibleCoin {
     /// # Errors
     /// Rejects failed membership, coins created after X, values below M, and coinbase
     /// coins that cannot be spent in the block after T.
-    pub fn new(
+    pub fn try_new(
         witness: CoinWitness,
         context: &ChainContext,
         minimum: MinimumAmount,

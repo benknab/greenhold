@@ -9,12 +9,13 @@ use greenhold_core::{
 
 #[test]
 fn expected_nonce_is_required_even_when_the_flag_is_omitted() -> Result<()> {
-    let block = BlockEndpoint::new(
+    let block = BlockEndpoint::try_new(
         Network::Bitcoin,
         0,
         constants::genesis_block(Network::Bitcoin).header,
     )?;
-    let context = ChainContext::new(block.clone(), block, AccumulatorState::new(0, vec![])?)?;
+    let context =
+        ChainContext::try_new(block.clone(), block, AccumulatorState::try_new(0, vec![])?)?;
     let challenge = " Challenge café 🔑 ";
     for original in ["", challenge] {
         let claim = Claim::new(

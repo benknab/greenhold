@@ -22,7 +22,7 @@ fn fixture() -> Result<(OutPoint, Vec<Step>)> {
     let hash = block.block_hash();
     let transaction = &block.txdata[0];
     let outpoint = OutPoint::new(transaction.compute_txid(), 0);
-    let coin = Coin::new(outpoint, hash, 10, false, transaction.output[0].clone())?;
+    let coin = Coin::try_new(outpoint, hash, 10, false, transaction.output[0].clone())?;
     let leaf = sha256d::Hash::from_byte_array(coin.leaf_hash());
     let mut proof_header = block.header;
     proof_header.prev_blockhash = hash;
@@ -213,7 +213,7 @@ fn retrieval_checks_coin_and_proof_at_the_selected_block() -> Result<()> {
 fn single_coin_binding_enforces_domain_rules_on_rpc_data() -> Result<()> {
     let block = constants::genesis_block(Network::Regtest);
     let outpoint = OutPoint::new(block.txdata[0].compute_txid(), 0);
-    let coin = Coin::new(
+    let coin = Coin::try_new(
         outpoint,
         block.block_hash(),
         10,

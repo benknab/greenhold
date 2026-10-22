@@ -131,7 +131,7 @@ fn prove(options: cli::ProveOptions, json: bool) -> Result<()> {
     let rpc = options.connections.rpc_config()?;
     let (context, coin) = progress::run("Checking chain state", || {
         let context = verify::context(&claim, &rpc)?;
-        let coin = EligibleCoin::new(witness, &context, claim.minimum_sats())?;
+        let coin = EligibleCoin::try_new(witness, &context, claim.minimum_sats())?;
         Ok((context, coin))
     })?;
     let input = ClaimInput::new(

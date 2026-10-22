@@ -19,10 +19,10 @@ fn context(unspent_since: u32, unspent_at: u32) -> Result<ChainContext> {
     } else {
         header(Network::Bitcoin)
     };
-    ChainContext::new(
-        BlockEndpoint::new(Network::Regtest, unspent_since, header(Network::Regtest))?,
-        BlockEndpoint::new(Network::Regtest, unspent_at, at_header)?,
-        AccumulatorState::new(3, vec![[1; 32], [2; 32]])?,
+    ChainContext::try_new(
+        BlockEndpoint::try_new(Network::Regtest, unspent_since, header(Network::Regtest))?,
+        BlockEndpoint::try_new(Network::Regtest, unspent_at, at_header)?,
+        AccumulatorState::try_new(3, vec![[1; 32], [2; 32]])?,
     )
 }
 
@@ -121,11 +121,11 @@ fn claim_parsing_rejects_malformed_bytes() -> Result<()> {
 #[test]
 fn signing_message_matches_independent_vector_and_binds_every_field() -> Result<()> {
     // Python hashlib and OpenSSL vector: synthetic genesis state, encoding only.
-    let endpoint = BlockEndpoint::new(Network::Bitcoin, 0, header(Network::Bitcoin))?;
-    let context = ChainContext::new(
+    let endpoint = BlockEndpoint::try_new(Network::Bitcoin, 0, header(Network::Bitcoin))?;
+    let context = ChainContext::try_new(
         endpoint.clone(),
         endpoint,
-        AccumulatorState::new(3, vec![[0x11; 32], [0x22; 32]])?,
+        AccumulatorState::try_new(3, vec![[0x11; 32], [0x22; 32]])?,
     )?;
     let claim = Claim::new(
         &context,

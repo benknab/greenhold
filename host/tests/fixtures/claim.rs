@@ -17,7 +17,7 @@ pub const VALUE: u64 = 12_345;
 /// Synthetic chain data, for guest and CLI boundaries only.
 pub fn signed(script: ScriptType, format: Format) -> Result<(ClaimInput, Claim)> {
     let key = SecretKey::from_slice(&[1; 32])?;
-    let coin = Coin::new(
+    let coin = Coin::try_new(
         OutPoint::new(Txid::from_byte_array([1; 32]), 2),
         BlockHash::from_byte_array([2; 32]),
         10,
@@ -29,12 +29,12 @@ pub fn signed(script: ScriptType, format: Format) -> Result<(ClaimInput, Claim)>
         },
     )?;
     let header = constants::genesis_block(Network::Regtest).header;
-    let context = ChainContext::new(
-        BlockEndpoint::new(Network::Regtest, 10, header)?,
-        BlockEndpoint::new(Network::Regtest, 20, header)?,
-        AccumulatorState::new(1, vec![coin.leaf_hash()])?,
+    let context = ChainContext::try_new(
+        BlockEndpoint::try_new(Network::Regtest, 10, header)?,
+        BlockEndpoint::try_new(Network::Regtest, 20, header)?,
+        AccumulatorState::try_new(1, vec![coin.leaf_hash()])?,
     )?;
-    let witness = CoinWitness::new(coin, context.unspent_at().hash(), 0, vec![])?;
+    let witness = CoinWitness::try_new(coin, context.unspent_at().hash(), 0, vec![])?;
     let minimum = MinimumAmount::try_from(VALUE)?;
     let nonce = "ab".repeat(32).parse()?;
     let claim = Claim::new(&context, minimum, nonce);

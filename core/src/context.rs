@@ -35,7 +35,7 @@ impl BlockEndpoint {
     /// # Errors
     /// Rejects unsupported networks, invalid proof of work, targets above the network's
     /// limit, and a wrong genesis.
-    pub fn new(network: Network, height: u32, header: Header) -> Result<Self> {
+    pub fn try_new(network: Network, height: u32, header: Header) -> Result<Self> {
         let supported = SupportedNetwork::try_from(network)?;
         if header.target() > Params::new(network).max_attainable_target {
             bail!("header target exceeds {network} proof-of-work limit");
@@ -76,7 +76,7 @@ impl TryFrom<BlockEndpointFields> for BlockEndpoint {
     type Error = anyhow::Error;
 
     fn try_from(fields: BlockEndpointFields) -> Result<Self> {
-        Self::new(fields.network.into(), fields.height, fields.header)
+        Self::try_new(fields.network.into(), fields.height, fields.header)
     }
 }
 
@@ -99,7 +99,7 @@ impl AccumulatorState {
     ///
     /// # Errors
     /// Rejects leaf counts outside the supported position range and wrong root counts.
-    pub fn new(num_leaves: u64, roots: Vec<[u8; 32]>) -> Result<Self> {
+    pub fn try_new(num_leaves: u64, roots: Vec<[u8; 32]>) -> Result<Self> {
         if num_leaves >= 1 << 62 {
             bail!("Utreexo leaf count exceeds supported position range");
         }
@@ -124,7 +124,7 @@ impl TryFrom<AccumulatorStateFields> for AccumulatorState {
     type Error = anyhow::Error;
 
     fn try_from(fields: AccumulatorStateFields) -> Result<Self> {
-        Self::new(fields.num_leaves, fields.roots)
+        Self::try_new(fields.num_leaves, fields.roots)
     }
 }
 
@@ -150,7 +150,7 @@ impl ChainContext {
     ///
     /// # Errors
     /// Rejects mixed networks, reversed heights, or different headers at the same height.
-    pub fn new(
+    pub fn try_new(
         unspent_since: BlockEndpoint,
         unspent_at: BlockEndpoint,
         state: AccumulatorState,
@@ -224,6 +224,6 @@ impl TryFrom<ContextFields> for ChainContext {
     type Error = anyhow::Error;
 
     fn try_from(fields: ContextFields) -> Result<Self> {
-        Self::new(fields.unspent_since, fields.unspent_at, fields.state)
+        Self::try_new(fields.unspent_since, fields.unspent_at, fields.state)
     }
 }

@@ -22,7 +22,7 @@ fn check(
         unspent_since,
         unspent_at,
     )?;
-    EligibleCoin::new(witness, &context, minimum(sats)?)
+    EligibleCoin::try_new(witness, &context, minimum(sats)?)
 }
 
 fn reject(result: Result<EligibleCoin>, reason: &str) -> Result<()> {
@@ -50,12 +50,12 @@ fn eligibility_requires_membership_creation_value_and_maturity() -> Result<()> {
     let (witness, context) = test_support::proved(test_support::coin(10, false)?, 10, 10)?;
     let (_, other_state) = test_support::proved(test_support::coin(9, false)?, 10, 10)?;
     reject(
-        EligibleCoin::new(witness.clone(), &other_state, minimum(1)?),
+        EligibleCoin::try_new(witness.clone(), &other_state, minimum(1)?),
         "membership mismatch",
     )?;
-    let later = ChainContext::new(
+    let later = ChainContext::try_new(
         context.unspent_since().clone(),
-        BlockEndpoint::new(
+        BlockEndpoint::try_new(
             Network::Regtest,
             11,
             constants::genesis_block(Network::Bitcoin).header,
@@ -63,7 +63,7 @@ fn eligibility_requires_membership_creation_value_and_maturity() -> Result<()> {
         context.state().clone(),
     )?;
     reject(
-        EligibleCoin::new(witness, &later, minimum(1)?),
+        EligibleCoin::try_new(witness, &later, minimum(1)?),
         "proof block",
     )?;
     Ok(())

@@ -5,7 +5,7 @@ use bitcoin::{Network, ScriptBuf, Txid, blockdata::constants, hex::FromHex};
 use serde_json::json;
 
 fn coin() -> Result<Coin> {
-    Coin::new(
+    Coin::try_new(
         OutPoint::new(Txid::from_byte_array([1; 32]), 2),
         BlockHash::from_byte_array([2; 32]),
         10,
@@ -19,10 +19,10 @@ fn coin() -> Result<Coin> {
 
 fn context(leaves: u64, roots: Vec<[u8; 32]>) -> Result<ChainContext> {
     let header = constants::genesis_block(Network::Regtest).header;
-    ChainContext::new(
-        BlockEndpoint::new(Network::Regtest, 10, header)?,
-        BlockEndpoint::new(Network::Regtest, 20, header)?,
-        AccumulatorState::new(leaves, roots)?,
+    ChainContext::try_new(
+        BlockEndpoint::try_new(Network::Regtest, 10, header)?,
+        BlockEndpoint::try_new(Network::Regtest, 20, header)?,
+        AccumulatorState::try_new(leaves, roots)?,
     )
 }
 
@@ -44,7 +44,7 @@ fn single_coin_paths_bind_all_leaf_fields_and_proof_block() -> Result<()> {
     let sibling = [42; 32];
     let root: [u8; 32] = Sha512_256::digest([leaf, sibling].concat()).into();
     let state = context(3, vec![root, [43; 32]])?;
-    let witness = CoinWitness::new(coin.clone(), state.unspent_at().hash(), 0, vec![sibling])?;
+    let witness = CoinWitness::try_new(coin.clone(), state.unspent_at().hash(), 0, vec![sibling])?;
     witness.verify_membership(&state)?;
     let json = serde_json::to_value(&witness)?;
     for (field, replacement) in [
@@ -116,7 +116,7 @@ fn sparse_forests_right_children_and_promoted_leaves() -> Result<()> {
         ((1 << 61) + 1, vec![sibling, leaf], 1 << 61, vec![]),
     ] {
         let state = context(leaves, roots)?;
-        CoinWitness::new(coin.clone(), state.unspent_at().hash(), target, hashes)?
+        CoinWitness::try_new(coin.clone(), state.unspent_at().hash(), target, hashes)?
             .verify_membership(&state)?;
     }
     for (leaves, roots, target) in [
@@ -128,7 +128,7 @@ fn sparse_forests_right_children_and_promoted_leaves() -> Result<()> {
     ] {
         let state = context(leaves, roots)?;
         reject(
-            CoinWitness::new(coin.clone(), state.unspent_at().hash(), target, vec![])?
+            CoinWitness::try_new(coin.clone(), state.unspent_at().hash(), target, vec![])?
                 .verify_membership(&state),
             "outside occupied forest",
         )?;
@@ -139,7 +139,7 @@ fn sparse_forests_right_children_and_promoted_leaves() -> Result<()> {
 #[test]
 fn deserialization_preserves_coin_and_path_bounds() -> Result<()> {
     let coin = coin()?;
-    let witness = CoinWitness::new(coin, BlockHash::all_zeros(), 0, vec![])?;
+    let witness = CoinWitness::try_new(coin, BlockHash::all_zeros(), 0, vec![])?;
     let mut value = serde_json::to_value(witness)?;
     value["extra"] = json!(true);
     value["coin"]["extra"] = json!(true);

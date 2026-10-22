@@ -107,7 +107,7 @@ fn rpc_tip_is_resolved_once_on_each_requested_network() -> Result<()> {
             ),
         ];
         // The script permits exactly one tip query.
-        let context = run(Input::new(network, Some(0), None)?, rpc)??;
+        let context = run(Input::try_new(network, Some(0), None)?, rpc)??;
         assert_eq!(context.network(), network);
         assert_eq!(context.unspent_at().height(), 10);
         assert_eq!(context.unspent_at().hash(), block);
@@ -123,14 +123,17 @@ fn rejects_wrong_networks_before_retrieving_state() -> Result<()> {
         } else {
             constants::genesis_block(Network::Bitcoin).block_hash()
         };
-        let error = run(Input::new(network, Some(0), Some(0))?, vec![hash(0, wrong)])?
-            .err()
-            .context("expected network failure")?;
+        let error = run(
+            Input::try_new(network, Some(0), Some(0))?,
+            vec![hash(0, wrong)],
+        )?
+        .err()
+        .context("expected network failure")?;
         assert!(error.to_string().contains("not on the requested network"));
     }
-    assert!(Input::new(Network::Bitcoin, Some(2), Some(1)).is_err());
-    assert!(Input::new(Network::Testnet, None, None).is_err());
-    assert!(Input::new(Network::Testnet4, None, None).is_err());
+    assert!(Input::try_new(Network::Bitcoin, Some(2), Some(1)).is_err());
+    assert!(Input::try_new(Network::Testnet, None, None).is_err());
+    assert!(Input::try_new(Network::Testnet4, None, None).is_err());
     Ok(())
 }
 
@@ -171,7 +174,7 @@ fn rejects_unavailable_state_and_malformed_headers() -> Result<()> {
             };
             rpc.push(("getutreexoroots", json!([genesis]), reply));
         }
-        let result = run(Input::new(Network::Bitcoin, Some(0), Some(0))?, rpc)?;
+        let result = run(Input::try_new(Network::Bitcoin, Some(0), Some(0))?, rpc)?;
         let error = result
             .err()
             .with_context(|| format!("{case} was accepted"))?;

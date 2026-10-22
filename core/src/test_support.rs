@@ -16,7 +16,7 @@ pub const VALUE: u64 = 12_345;
 pub mod signatures;
 
 pub fn coin(creation_height: u32, coinbase: bool) -> Result<Coin> {
-    Coin::new(
+    Coin::try_new(
         OutPoint::new(Txid::from_byte_array([1; 32]), 2),
         BlockHash::from_byte_array([2; 32]),
         creation_height,
@@ -35,11 +35,11 @@ pub fn proved(
     unspent_at: u32,
 ) -> Result<(CoinWitness, ChainContext)> {
     let header = constants::genesis_block(Network::Regtest).header;
-    let context = ChainContext::new(
-        BlockEndpoint::new(Network::Regtest, unspent_since, header)?,
-        BlockEndpoint::new(Network::Regtest, unspent_at, header)?,
-        AccumulatorState::new(1, vec![coin.leaf_hash()])?,
+    let context = ChainContext::try_new(
+        BlockEndpoint::try_new(Network::Regtest, unspent_since, header)?,
+        BlockEndpoint::try_new(Network::Regtest, unspent_at, header)?,
+        AccumulatorState::try_new(1, vec![coin.leaf_hash()])?,
     )?;
-    let witness = CoinWitness::new(coin, context.unspent_at().hash(), 0, vec![])?;
+    let witness = CoinWitness::try_new(coin, context.unspent_at().hash(), 0, vec![])?;
     Ok((witness, context))
 }

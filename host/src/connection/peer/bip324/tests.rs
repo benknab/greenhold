@@ -198,7 +198,7 @@ fn handshake_deadline_and_v1_failure_do_not_downgrade() -> Result<()> {
     let listener = TcpListener::bind("127.0.0.1:0")?;
     let client = TcpStream::connect(listener.local_addr()?)?;
     let (server, _) = test_support::accept(&listener)?;
-    let error = Bip324::new(client, Duration::ZERO)
+    let error = Bip324::try_new(client, Duration::ZERO)
         .err()
         .context("expected deadline error")?;
     assert_eq!(

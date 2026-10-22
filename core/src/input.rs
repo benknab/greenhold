@@ -46,7 +46,7 @@ impl ClaimInput {
     /// # Errors
     /// Rejects ineligible coins and invalid message signatures for the coin's script.
     pub fn check(self) -> Result<Claim> {
-        let coin = EligibleCoin::new(self.witness, &self.context, self.minimum)?;
+        let coin = EligibleCoin::try_new(self.witness, &self.context, self.minimum)?;
         let claim = Claim::new(&self.context, self.minimum, self.nonce);
         verification::verify_signature(
             &coin.witness().coin().output().script_pubkey,

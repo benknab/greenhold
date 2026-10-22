@@ -10,7 +10,7 @@ use greenhold_signer::{Format, ScriptType};
 
 fn input(script: ScriptType, format: Format) -> Result<ClaimInput> {
     let key = SecretKey::from_slice(&[1; 32])?;
-    let coin = Coin::new(
+    let coin = Coin::try_new(
         OutPoint::new(Txid::from_byte_array([1; 32]), 2),
         BlockHash::from_byte_array([2; 32]),
         10,

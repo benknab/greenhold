@@ -78,10 +78,10 @@ type Session = Protocol<DeadlineStream, DeadlineStream>;
 impl Bip324 {
     /// The exchange budget starts after TCP connection setup and includes BIP324 negotiation.
     pub(super) fn connect(endpoint: &SocketUrl, timeout: Duration) -> Result<Self> {
-        Self::new(socket::connect_tcp(endpoint)?, timeout)
+        Self::try_new(socket::connect_tcp(endpoint)?, timeout)
     }
 
-    fn new(socket: TcpStream, timeout: Duration) -> Result<Self> {
+    fn try_new(socket: TcpStream, timeout: Duration) -> Result<Self> {
         let (reader, writer) = DeadlineStream::pair(socket, timeout)?;
         let session = Protocol::new(
             Magic::BITCOIN.to_bytes(),

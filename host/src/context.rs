@@ -13,7 +13,7 @@ pub struct Input {
 }
 
 impl Input {
-    pub fn new(
+    pub fn try_new(
         network: Network,
         unspent_since: Option<u32>,
         unspent_at: Option<u32>,
@@ -83,7 +83,11 @@ fn fetch_selected(
             block_header(&mut rpc, &block.hash).context("cannot retrieve RPC tip header")?;
         (
             height,
-            Some(BlockEndpoint::new(input.network.into(), height, header)?),
+            Some(BlockEndpoint::try_new(
+                input.network.into(),
+                height,
+                header,
+            )?),
         )
     };
     let unspent_since = input.unspent_since.unwrap_or(unspent_at);
@@ -111,9 +115,9 @@ fn fetch_selected(
             at_block.hash()
         )
     })?;
-    let state = AccumulatorState::new(roots.num_leaves, roots.roots)?;
+    let state = AccumulatorState::try_new(roots.num_leaves, roots.roots)?;
 
-    ChainContext::new(since_block, at_block, state)
+    ChainContext::try_new(since_block, at_block, state)
 }
 
 fn selected_endpoint(
@@ -125,7 +129,7 @@ fn selected_endpoint(
     if location.hash != hash {
         bail!("RPC block location does not match requested hash");
     }
-    BlockEndpoint::new(network.into(), location.height, block_header(rpc, &hash)?)
+    BlockEndpoint::try_new(network.into(), location.height, block_header(rpc, &hash)?)
 }
 
 fn endpoint_block(
@@ -138,7 +142,7 @@ fn endpoint_block(
         .with_context(|| format!("cannot resolve RPC block at height {height}"))?;
     let header = block_header(rpc, &hash)
         .with_context(|| format!("cannot retrieve RPC header at height {height}"))?;
-    BlockEndpoint::new(network, height, header)
+    BlockEndpoint::try_new(network, height, header)
 }
 
 fn block_header(rpc: &mut utreexod_rpc::Client<'_>, hash: &BlockHash) -> Result<Header> {

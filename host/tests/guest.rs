@@ -120,7 +120,7 @@ fn guest_rejects_rebinding_the_signature_to_a_different_valid_context() -> Resul
         }
         let context: ChainContext = serde_json::from_value(changed["context"].clone())?;
         let witness: CoinWitness = serde_json::from_value(changed["witness"].clone())?;
-        EligibleCoin::new(witness, &context, MinimumAmount::try_from(fixture::VALUE)?)?;
+        EligibleCoin::try_new(witness, &context, MinimumAmount::try_from(fixture::VALUE)?)?;
         let session = run(&serde_json::from_value(changed)?)?;
         assert_eq!(session.exit_code, ExitCode::Halted(1), "{case}");
         assert!(session.journal.bytes.is_empty());
