@@ -13,6 +13,8 @@ fn discover_checks_address_and_network_before_node_access() -> Result<()> {
     assert!(help.contains("--utreexod"));
     assert!(help.contains("--json"));
     assert!(help.contains("tls://electrum.hospitablealpaca.com:50002"));
+    assert!(help.contains("Discover through Utreexod (the default)."));
+    assert!(help.contains("https://utreexo-rpc.hospitablealpaca.com/"));
     for (address, code, message) in [
         ("not-an-address", 2, "invalid value"),
         (

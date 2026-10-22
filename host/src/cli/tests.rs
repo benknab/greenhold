@@ -328,9 +328,9 @@ fn discover_cli(extra: &[&str]) -> clap::error::Result<Cli> {
 }
 
 #[test]
-fn discover_defaults_to_electrum_and_selects_explicit_connections() -> Result<()> {
+fn discover_defaults_to_utreexod_and_selects_explicit_connections() -> Result<()> {
     for (args, expected) in [
-        (vec![], Some(DEFAULT_ELECTRUM)),
+        (vec![], None),
         (vec!["--utreexod"], None),
         (vec!["--electrum"], Some(DEFAULT_ELECTRUM)),
         (
