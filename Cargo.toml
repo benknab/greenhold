@@ -39,6 +39,10 @@ let_underscore_must_use = "deny"
 unwrap_used = "deny"
 expect_used = "deny"
 panic = "deny"
+redundant_clone = "deny"
+fallible_impl_from = "deny"
+unused_result_ok = "deny"
+unreachable = "deny"
 
 [profile.release]
 debug = 1

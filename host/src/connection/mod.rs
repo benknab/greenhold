@@ -9,6 +9,7 @@ mod json_rpc;
     not(test),
     expect(
         dead_code,
+        unused_imports,
         reason = "P2P client is retained and tested for future node operations"
     )
 )]

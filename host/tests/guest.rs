@@ -76,7 +76,7 @@ fn guest_rejects_changed_claims_and_witnesses_without_host_checks() -> Result<()
     assert!(session.journal.bytes.is_empty());
 
     // Change a valid PoW header at X while retaining the authenticated state at T.
-    let mut changed = original.clone();
+    let mut changed = original;
     changed["context"]["unspent_since"]["header"] = serde_json::to_value(
         bitcoin::blockdata::constants::genesis_block(bitcoin::Network::Bitcoin).header,
     )?;

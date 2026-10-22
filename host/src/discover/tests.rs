@@ -319,10 +319,10 @@ fn electrum_response(server_network: Network, coins: Value) -> Result<Result<Vec
         ));
         if let Ok(coins) = parsed {
             let mut heights = BTreeSet::new();
-            for coin in coins {
-                if coin.height <= 0 || !heights.insert(coin.height) {
-                    continue;
-                }
+            let unique_confirmed = coins
+                .into_iter()
+                .filter(|coin| coin.height > 0 && heights.insert(coin.height));
+            for coin in unique_confirmed {
                 requests.push((
                     "blockchain.block.header",
                     json!([coin.height]),
