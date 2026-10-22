@@ -1,5 +1,6 @@
-# Shared by all four packages.
+# Shared by all workspace packages.
 excessive-nesting-threshold = 4
+max-fn-params-bools = 1
 
 # Tests may fail loudly; production code must handle errors or justify an exception.
 allow-expect-in-tests = true

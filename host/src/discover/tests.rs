@@ -10,27 +10,45 @@ use std::{
 };
 use url::Url;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DiscoveryCase {
+    ConfirmedCoins,
+    LargeHistory,
+    ExcessConfirmations,
+    ChangedTip,
+}
+
+impl DiscoveryCase {
+    fn confirmations(self) -> u32 {
+        if self == Self::ExcessConfirmations {
+            u32::MAX
+        } else {
+            10
+        }
+    }
+}
+
 #[test]
 fn only_unspent_confirmed_candidates_reach_gettxout() -> Result<()> {
-    check_discovery(false, 10, false)
+    check_discovery(DiscoveryCase::ConfirmedCoins)
 }
 
 #[test]
 fn large_history_pages_preserve_pagination() -> Result<()> {
-    check_discovery(true, 10, false)
+    check_discovery(DiscoveryCase::LargeHistory)
 }
 
 #[test]
 fn utreexod_rejects_confirmations_above_the_observed_height() -> Result<()> {
-    check_discovery(false, u32::MAX, false)
+    check_discovery(DiscoveryCase::ExcessConfirmations)
 }
 
 #[test]
 fn utreexod_rejects_a_tip_change_after_creation_hash_lookup() -> Result<()> {
-    check_discovery(false, 10, true)
+    check_discovery(DiscoveryCase::ChangedTip)
 }
 
-fn check_discovery(large_reply: bool, confirmations: u32, changed_tip: bool) -> Result<()> {
+fn check_discovery(case: DiscoveryCase) -> Result<()> {
     let address = Address::p2wsh(
         &bitcoin::ScriptBuf::from_bytes(vec![0x51]),
         Network::Regtest,
@@ -90,29 +108,42 @@ fn check_discovery(large_reply: bool, confirmations: u32, changed_tip: bool) -> 
             "gettxout",
             json!(survivors.iter().map(|coin| json!([coin.txid, coin.vout, false])).collect::<Vec<_>>()),
             json!(survivors.iter().map(|_| json!({
-                "bestblock":genesis,"confirmations":confirmations,"coinbase":true,"value":1.000_000_01,
+                "bestblock":genesis,"confirmations":case.confirmations(),"coinbase":true,"value":1.000_000_01,
                 "scriptPubKey":{"hex":script}
             })).collect::<Vec<_>>()),
         ),
     ];
-    if confirmations == 10 {
+    if case != DiscoveryCase::ExcessConfirmations {
         requests.extend([
             ("getblockhash", json!([11]), json!(creation_hash)),
             (
                 "getbestblock",
                 json!([]),
-                json!({"hash":if changed_tip {creation_hash} else {genesis},"height":20}),
+                json!({"hash":if case == DiscoveryCase::ChangedTip {creation_hash} else {genesis},"height":20}),
             ),
         ]);
     }
-    let task = thread::spawn(move || serve(&listener, requests, large_reply));
+    let task =
+        thread::spawn(move || serve(&listener, requests, case == DiscoveryCase::LargeHistory));
     let result = super::coins(&address, Network::Regtest, &config);
     task.join().map_err(|_| anyhow!("RPC mock panicked"))??;
-    if confirmations != 10 || changed_tip {
+    assert_discovered(case, result, survivors, creation_hash)
+}
+
+fn assert_discovered(
+    case: DiscoveryCase,
+    result: Result<Vec<CoinSummary>>,
+    survivors: Vec<OutPoint>,
+    creation_hash: BlockHash,
+) -> Result<()> {
+    if matches!(
+        case,
+        DiscoveryCase::ExcessConfirmations | DiscoveryCase::ChangedTip
+    ) {
         let error = result.err().context("inconsistent discovery accepted")?;
         assert_eq!(
             error.to_string(),
-            if changed_tip {
+            if case == DiscoveryCase::ChangedTip {
                 "chain tip changed during discovery; run discover again"
             } else {
                 "RPC confirmation count exceeds observed height"
