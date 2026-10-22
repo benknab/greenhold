@@ -21,11 +21,7 @@ pub fn fetch(
     let output = rpc
         .tx_out(&outpoint.txid, outpoint.vout, false)?
         .context("coin is absent from the confirmed UTXO set")?;
-    let utreexod_rpc::BlockHeaderResponse::Verbose(observed) =
-        rpc.block_header(&output.best_block, true)?
-    else {
-        bail!("expected a verbose RPC block header");
-    };
+    let observed = rpc.block_location(&output.best_block)?;
     if observed.hash != output.best_block {
         bail!("RPC block location does not match requested hash");
     }

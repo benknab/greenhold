@@ -121,10 +121,7 @@ fn selected_endpoint(
     network: SupportedNetwork,
     hash: BlockHash,
 ) -> Result<BlockEndpoint> {
-    let utreexod_rpc::BlockHeaderResponse::Verbose(location) = rpc.block_header(&hash, true)?
-    else {
-        bail!("expected a verbose RPC block header");
-    };
+    let location = rpc.block_location(&hash)?;
     if location.hash != hash {
         bail!("RPC block location does not match requested hash");
     }
@@ -145,9 +142,7 @@ fn endpoint_block(
 }
 
 fn block_header(rpc: &mut utreexod_rpc::Client<'_>, hash: &BlockHash) -> Result<Header> {
-    let utreexod_rpc::BlockHeaderResponse::Raw(header) = rpc.block_header(hash, false)? else {
-        bail!("expected a raw RPC block header");
-    };
+    let header = rpc.block_header(hash)?;
     if header.block_hash() != *hash {
         bail!("RPC header does not match requested block hash");
     }

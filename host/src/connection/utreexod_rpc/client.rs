@@ -1,6 +1,6 @@
 use super::{
-    AddressTransaction, BlockHeaderResponse, BlockLocation, ChainTipProof, Config, HistoryOrder,
-    InputDetails, Roots, SearchOptions, TxOutResponse,
+    AddressTransaction, BlockLocation, ChainTipProof, Config, HistoryOrder, InputDetails, Roots,
+    SearchOptions, TxOutResponse,
 };
 use crate::connection::{
     TIMEOUT,
@@ -9,7 +9,7 @@ use crate::connection::{
 };
 use anyhow::{Result, anyhow, bail};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use bitcoin::{BlockHash, OutPoint, Txid};
+use bitcoin::{BlockHash, OutPoint, Txid, block::Header};
 use serde::{Serialize, de::DeserializeOwned};
 use std::{io::Read, time::Duration};
 use ureq::{Agent, http::HeaderValue};
@@ -45,18 +45,13 @@ impl<'a> Client<'a> {
         self.call("getblockhash", [height])
     }
 
-    pub fn block_header(
-        &mut self,
-        block: &BlockHash,
-        verbose: bool,
-    ) -> Result<BlockHeaderResponse> {
-        if verbose {
-            self.call("getblockheader", (block, true))
-                .map(BlockHeaderResponse::Verbose)
-        } else {
-            let HeaderResponse(header) = self.call("getblockheader", (block, false))?;
-            Ok(BlockHeaderResponse::Raw(header))
-        }
+    pub fn block_header(&mut self, block: &BlockHash) -> Result<Header> {
+        let HeaderResponse(header) = self.call("getblockheader", (block, false))?;
+        Ok(header)
+    }
+
+    pub fn block_location(&mut self, block: &BlockHash) -> Result<BlockLocation> {
+        self.call("getblockheader", (block, true))
     }
 
     pub fn utreexo_roots(&mut self, block: &BlockHash) -> Result<Roots> {

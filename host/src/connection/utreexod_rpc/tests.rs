@@ -1,6 +1,6 @@
 use super::*;
 use crate::test_support::{accept, read_http};
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow};
 use bitcoin::OutPoint;
 use serde_json::{Value, json};
 use std::{
@@ -89,16 +89,11 @@ fn header_endpoint_parses_both_formats_without_verifying_chain_data() -> Result<
         ];
         let (config, task) = serve("200 OK", replies, false)?;
         let mut client = Client::new(&config);
-        let fetched_header = client.block_header(&requested, false);
-        let location = client.block_header(&requested, true);
+        let fetched_header = client.block_header(&requested);
+        let location = client.block_location(&requested);
         task.join().map_err(|_| anyhow!("RPC mock panicked"))??;
-        let BlockHeaderResponse::Raw(fetched_header) = fetched_header? else {
-            bail!("raw header returned a verbose response");
-        };
-        assert_eq!(fetched_header, header);
-        let BlockHeaderResponse::Verbose(location) = location? else {
-            bail!("verbose header returned a raw response");
-        };
+        assert_eq!(fetched_header?, header);
+        let location = location?;
         assert_eq!((location.hash, location.height), (hash, 0));
     }
     Ok(())

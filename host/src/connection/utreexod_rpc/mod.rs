@@ -1,4 +1,3 @@
-use bitcoin::block::Header;
 use std::fmt;
 use url::Url;
 
@@ -26,13 +25,6 @@ impl Config {
     pub fn new(url: Url, credentials: Option<(String, String)>) -> Self {
         Self { url, credentials }
     }
-}
-
-/// The two response formats of getblockheader, with only the fields we use.
-#[derive(Debug)]
-pub enum BlockHeaderResponse {
-    Raw(Header),
-    Verbose(BlockLocation),
 }
 
 #[cfg(test)]
