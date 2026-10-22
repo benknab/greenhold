@@ -84,6 +84,11 @@ impl EligibleCoin {
     pub fn witness(&self) -> &CoinWitness {
         &self.witness
     }
+
+    #[must_use]
+    pub fn into_witness(self) -> CoinWitness {
+        self.witness
+    }
 }
 
 fn check_rules(coin: &Coin, context: &ChainContext, minimum: MinimumAmount) -> Result<()> {

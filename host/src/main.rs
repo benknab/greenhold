@@ -141,7 +141,7 @@ fn prove(options: cli::ProveOptions, json: bool) -> Result<()> {
     })?;
     let input = ClaimInput::new(
         context,
-        coin.witness().clone(),
+        coin.into_witness(),
         claim.minimum_sats(),
         claim.nonce(),
         options.signature,
