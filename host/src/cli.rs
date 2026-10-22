@@ -7,7 +7,7 @@ use greenhold_core::{
 use std::path::PathBuf;
 use url::Url;
 
-pub const DEFAULT_RPC: &str = "https://utreexo.hospitablealpaca.com/";
+pub const DEFAULT_RPC: &str = "https://utreexo-rpc.hospitablealpaca.com/";
 pub const DEFAULT_ELECTRUM: &str = "tls://electrum.hospitablealpaca.com:50002";
 
 #[derive(Debug, Parser)]
@@ -61,7 +61,7 @@ pub struct DiscoverOptions {
     pub electrum: Option<electrum::Endpoint>,
 
     /// Discover through Utreexod.
-    /// Use <https://utreexo.hospitablealpaca.com/> unless custom RPC settings are supplied.
+    /// Use <https://utreexo-rpc.hospitablealpaca.com/> unless custom RPC settings are supplied.
     #[arg(long)]
     pub utreexod: bool,
 
