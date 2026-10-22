@@ -1,6 +1,8 @@
 use super::*;
 use crate::connection::TIMEOUT;
-use std::{collections::VecDeque, net::TcpListener, thread};
+use std::collections::VecDeque;
+use std::net::TcpListener;
+use std::thread;
 
 #[test]
 fn handshake_leaves_transport_ready_for_an_operation() -> Result<()> {

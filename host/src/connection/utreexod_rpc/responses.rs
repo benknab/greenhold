@@ -1,5 +1,7 @@
 use anyhow::Result;
-use bitcoin::{Amount, BlockHash, OutPoint, ScriptBuf, Txid, hashes::sha256d, hex::FromHex};
+use bitcoin::hashes::sha256d;
+use bitcoin::hex::FromHex;
+use bitcoin::{Amount, BlockHash, OutPoint, ScriptBuf, Txid};
 use serde::{Deserialize, Deserializer};
 
 #[derive(Debug, Deserialize)]

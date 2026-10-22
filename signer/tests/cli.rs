@@ -1,16 +1,12 @@
 use anyhow::{Context as _, Result};
-use bitcoin::{
-    Witness,
-    base64::{Engine as _, engine::general_purpose::STANDARD},
-    consensus,
-    hex::DisplayHex as _,
-};
+use bitcoin::base64::Engine as _;
+use bitcoin::base64::engine::general_purpose::STANDARD;
+use bitcoin::hex::DisplayHex as _;
+use bitcoin::{Witness, consensus};
 use serde_json::Value;
-use std::{
-    fs,
-    path::Path,
-    process::{Command, Output},
-};
+use std::fs;
+use std::path::Path;
+use std::process::{Command, Output};
 
 const MNEMONIC: &str =
     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";

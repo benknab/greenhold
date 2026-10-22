@@ -1,6 +1,7 @@
 use super::TIMEOUT;
 use anyhow::{Context, Result, bail};
-use std::{net::TcpStream, str::FromStr};
+use std::net::TcpStream;
+use std::str::FromStr;
 use url::Url;
 
 /// A host and explicit nonzero port, without credentials or request-specific URL parts.

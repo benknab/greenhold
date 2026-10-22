@@ -1,13 +1,14 @@
 use super::*;
 use crate::test_support;
 use anyhow::anyhow;
-use bitcoin::{Txid, block::Header, consensus::encode, hashes::Hash};
+use bitcoin::Txid;
+use bitcoin::block::Header;
+use bitcoin::consensus::encode;
+use bitcoin::hashes::Hash;
 use serde_json::{Value, json};
-use std::{
-    io::{BufRead as _, BufReader, Write},
-    net::TcpListener,
-    thread,
-};
+use std::io::{BufRead as _, BufReader, Write};
+use std::net::TcpListener;
+use std::thread;
 use url::Url;
 
 #[derive(Clone, Copy, PartialEq, Eq)]

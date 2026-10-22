@@ -1,11 +1,10 @@
 use super::*;
 use crate::cli::{Cli, Command};
-use bitcoin::{Network, blockdata::constants};
+use bitcoin::Network;
+use bitcoin::blockdata::constants;
 use clap::Parser as _;
-use greenhold_core::{
-    context::{AccumulatorState, BlockEndpoint, ChainContext},
-    eligibility::MinimumAmount,
-};
+use greenhold_core::context::{AccumulatorState, BlockEndpoint, ChainContext};
+use greenhold_core::eligibility::MinimumAmount;
 
 #[test]
 fn expected_nonce_is_required_even_when_the_flag_is_omitted() -> Result<()> {

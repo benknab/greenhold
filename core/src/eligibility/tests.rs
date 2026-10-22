@@ -1,9 +1,8 @@
 use super::*;
-use crate::{
-    context::BlockEndpoint,
-    test_support::{self, VALUE},
-};
-use bitcoin::{Network, blockdata::constants};
+use crate::context::BlockEndpoint;
+use crate::test_support::{self, VALUE};
+use bitcoin::Network;
+use bitcoin::blockdata::constants;
 use serde_json::json;
 
 fn minimum(sats: u64) -> Result<MinimumAmount> {

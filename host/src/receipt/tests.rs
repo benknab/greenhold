@@ -1,5 +1,6 @@
 use super::*;
-use risc0_zkvm::{FakeReceipt, InnerReceipt, ReceiptClaim, sha::Digest};
+use risc0_zkvm::sha::Digest;
+use risc0_zkvm::{FakeReceipt, InnerReceipt, ReceiptClaim};
 
 /// Format checks only: a fake receipt has the receipt structure but proves nothing.
 fn receipt(journal: Vec<u8>) -> Receipt {

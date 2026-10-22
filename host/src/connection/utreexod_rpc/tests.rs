@@ -3,11 +3,9 @@ use crate::test_support;
 use anyhow::{Context, Result, anyhow};
 use bitcoin::OutPoint;
 use serde_json::{Value, json};
-use std::{
-    io::{BufReader, Write},
-    net::TcpListener,
-    thread,
-};
+use std::io::{BufReader, Write};
+use std::net::TcpListener;
+use std::thread;
 
 const BLOCK: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
 

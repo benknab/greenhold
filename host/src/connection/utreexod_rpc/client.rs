@@ -2,17 +2,20 @@ use super::{
     AddressTransaction, BlockLocation, ChainTipProof, Config, HistoryOrder, InputDetails, Roots,
     SearchOptions, TxOutResponse,
 };
-use crate::connection::{
-    TIMEOUT,
-    header::HeaderResponse,
-    json_rpc::{Request, Response, ServerError},
-};
+use crate::connection::TIMEOUT;
+use crate::connection::header::HeaderResponse;
+use crate::connection::json_rpc::{Request, Response, ServerError};
 use anyhow::{Result, anyhow, bail};
-use base64::{Engine as _, engine::general_purpose::STANDARD};
-use bitcoin::{BlockHash, OutPoint, Txid, block::Header};
-use serde::{Serialize, de::DeserializeOwned};
-use std::{io::Read, time::Duration};
-use ureq::{Agent, http::HeaderValue};
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD;
+use bitcoin::block::Header;
+use bitcoin::{BlockHash, OutPoint, Txid};
+use serde::Serialize;
+use serde::de::DeserializeOwned;
+use std::io::Read;
+use std::time::Duration;
+use ureq::Agent;
+use ureq::http::HeaderValue;
 
 const BULK_TIMEOUT: Duration = Duration::from_mins(1);
 

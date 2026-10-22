@@ -1,7 +1,8 @@
 use anyhow::Result;
 use greenhold_guest_builder::GREENHOLD_GUEST_ID;
 use risc0_zkvm::sha::Digest;
-use std::{fs, process::Command};
+use std::fs;
+use std::process::Command;
 
 #[test]
 fn version_names_the_guest_image_id_that_receipts_must_match() -> Result<()> {

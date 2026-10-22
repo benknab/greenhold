@@ -1,7 +1,8 @@
 use anyhow::Result;
 use greenhold_core::coin::CoinWitness;
 use greenhold_signer::{Format, ScriptType};
-use std::{fs, process::Command};
+use std::fs;
+use std::process::Command;
 
 #[path = "../src/artifacts.rs"]
 mod artifacts;

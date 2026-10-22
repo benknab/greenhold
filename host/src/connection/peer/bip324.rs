@@ -1,22 +1,16 @@
-use super::{
-    super::socket::{self, SocketUrl},
-    deadline::DeadlineStream,
-    transport::Transport,
-};
+use super::super::socket::{self, SocketUrl};
+use super::deadline::DeadlineStream;
+use super::transport::Transport;
 use anyhow::{Context, Result, bail};
-use bip324::{
-    PacketType, Role,
-    io::{Payload, Protocol},
-};
-use bitcoin::{
-    consensus,
-    hashes::{Hash, sha256d},
-    p2p::{
-        Magic,
-        message::{NetworkMessage, RawNetworkMessage},
-    },
-};
-use std::{fmt, net::TcpStream, time::Duration};
+use bip324::io::{Payload, Protocol};
+use bip324::{PacketType, Role};
+use bitcoin::consensus;
+use bitcoin::hashes::{Hash, sha256d};
+use bitcoin::p2p::Magic;
+use bitcoin::p2p::message::{NetworkMessage, RawNetworkMessage};
+use std::fmt;
+use std::net::TcpStream;
+use std::time::Duration;
 
 // BIP324 message IDs, followed by the assignments in its message_type_ids.md.
 const SHORT_COMMANDS: [&str; 38] = [

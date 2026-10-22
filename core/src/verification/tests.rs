@@ -1,12 +1,10 @@
 use crate::test_support::signatures::*;
 use anyhow::{Context as _, Result};
-use bitcoin::{
-    Address, Amount, ScriptBuf, Transaction, Witness,
-    base64::{Engine as _, engine::general_purpose::STANDARD},
-    consensus,
-    hashes::Hash,
-    secp256k1::ecdsa,
-};
+use bitcoin::base64::Engine as _;
+use bitcoin::base64::engine::general_purpose::STANDARD;
+use bitcoin::hashes::Hash;
+use bitcoin::secp256k1::ecdsa;
+use bitcoin::{Address, Amount, ScriptBuf, Transaction, Witness, consensus};
 
 fn script(address: &str) -> Result<ScriptBuf> {
     Ok(address

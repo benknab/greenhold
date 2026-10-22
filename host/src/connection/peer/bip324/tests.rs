@@ -1,12 +1,11 @@
 use super::super::super::TIMEOUT;
 use super::super::handshake;
 use super::*;
-use crate::{connection::peer, test_support};
-use std::{
-    io::{self, Read, Write},
-    net::{Shutdown, TcpListener},
-    thread,
-};
+use crate::connection::peer;
+use crate::test_support;
+use std::io::{self, Read, Write};
+use std::net::{Shutdown, TcpListener};
+use std::thread;
 
 type Remote = Session;
 

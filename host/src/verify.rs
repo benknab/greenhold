@@ -1,9 +1,8 @@
-use crate::{connection::utreexod_rpc, context, guest};
+use crate::connection::utreexod_rpc;
+use crate::{context, guest};
 use anyhow::{Result, bail};
-use greenhold_core::{
-    claim::{Claim, Nonce},
-    network::SupportedNetwork,
-};
+use greenhold_core::claim::{Claim, Nonce};
+use greenhold_core::network::SupportedNetwork;
 use risc0_zkvm::Receipt;
 
 /// Check the receipt's claim against the network, expected nonce, and node state.

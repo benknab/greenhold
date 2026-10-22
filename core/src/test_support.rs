@@ -1,14 +1,11 @@
 //! Shared unit-test fixtures. Synthetic chain data, never accepted chain state.
 
-use crate::{
-    coin::{Coin, CoinWitness},
-    context::{AccumulatorState, BlockEndpoint, ChainContext},
-};
+use crate::coin::{Coin, CoinWitness};
+use crate::context::{AccumulatorState, BlockEndpoint, ChainContext};
 use anyhow::Result;
-use bitcoin::{
-    Amount, BlockHash, Network, OutPoint, ScriptBuf, TxOut, Txid, blockdata::constants,
-    hashes::Hash,
-};
+use bitcoin::blockdata::constants;
+use bitcoin::hashes::Hash;
+use bitcoin::{Amount, BlockHash, Network, OutPoint, ScriptBuf, TxOut, Txid};
 
 pub const VALUE: u64 = 12_345;
 

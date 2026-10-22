@@ -1,9 +1,7 @@
 //! Coin eligibility for a claim. Authorization is checked separately.
 
-use crate::{
-    coin::{Coin, CoinWitness},
-    context::ChainContext,
-};
+use crate::coin::{Coin, CoinWitness};
+use crate::context::ChainContext;
 use anyhow::{Context as _, Result, bail};
 use bitcoin::Amount;
 use serde::{Deserialize, Serialize};

@@ -2,13 +2,11 @@
 
 use anyhow::{Context as _, Result, bail};
 use bip322::Verification;
-use bitcoin::{
-    Address, Network, Script, Sequence, Transaction, Witness,
-    absolute::LockTime,
-    base64::{Engine as _, engine::general_purpose::STANDARD},
-    consensus,
-    sign_message::MessageSignature,
-};
+use bitcoin::absolute::LockTime;
+use bitcoin::base64::Engine as _;
+use bitcoin::base64::engine::general_purpose::STANDARD;
+use bitcoin::sign_message::MessageSignature;
+use bitcoin::{Address, Network, Script, Sequence, Transaction, Witness, consensus};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 

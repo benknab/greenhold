@@ -1,7 +1,9 @@
 use anyhow::{Context as _, Result, bail};
 use bincode::Options as _;
 use risc0_zkvm::Receipt;
-use std::{fs::File, io::Read as _, path::Path};
+use std::fs::File;
+use std::io::Read as _;
+use std::path::Path;
 
 const TAG: &[u8] = b"greenhold/receipt/v1\0";
 

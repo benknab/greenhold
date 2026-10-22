@@ -4,16 +4,14 @@
 
 use anyhow::{Result, ensure};
 use bip322::LockParams;
-use bitcoin::{
-    Address, CompressedPublicKey, Network, PrivateKey, Transaction, Witness,
-    base64::{Engine as _, engine::general_purpose::STANDARD},
-    bip32::{ChildNumber, DerivationPath, Xpriv},
-    consensus,
-    hashes::Hash,
-    key::TapTweak,
-    secp256k1::{Keypair, Message, Secp256k1, SecretKey},
-    sighash::{Prevouts, SighashCache, TapSighashType},
-};
+use bitcoin::base64::Engine as _;
+use bitcoin::base64::engine::general_purpose::STANDARD;
+use bitcoin::bip32::{ChildNumber, DerivationPath, Xpriv};
+use bitcoin::hashes::Hash;
+use bitcoin::key::TapTweak;
+use bitcoin::secp256k1::{Keypair, Message, Secp256k1, SecretKey};
+use bitcoin::sighash::{Prevouts, SighashCache, TapSighashType};
+use bitcoin::{Address, CompressedPublicKey, Network, PrivateKey, Transaction, Witness, consensus};
 use clap::ValueEnum;
 use serde::Serialize;
 

@@ -1,11 +1,9 @@
 use anyhow::{Context, Result, bail};
 use serde_json::Value;
-use std::{
-    io::{self, BufRead},
-    net::{SocketAddr, TcpListener, TcpStream},
-    thread,
-    time::{Duration, Instant},
-};
+use std::io::{self, BufRead};
+use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::thread;
+use std::time::{Duration, Instant};
 
 // A missing request must fail the fixture, not leave a join blocked forever.
 pub fn accept(listener: &TcpListener) -> Result<(TcpStream, SocketAddr)> {

@@ -3,9 +3,12 @@ use anyhow::{Context, Result};
 use bitcoin::{Address, Amount, Network, OutPoint, Transaction};
 use greenhold_core::claim::{Claim, Nonce};
 use greenhold_guest_builder::GREENHOLD_GUEST_ID;
-use risc0_zkvm::{InnerReceipt, Receipt, sha::Digest};
+use risc0_zkvm::sha::Digest;
+use risc0_zkvm::{InnerReceipt, Receipt};
 use serde_json::{Value, json};
-use std::{fs, path::Path, time::Duration};
+use std::fs;
+use std::path::Path;
+use std::time::Duration;
 
 const TAG: &[u8] = b"greenhold/receipt/v1\0";
 const NONCE: &str = " Challenge café 🔑 ";

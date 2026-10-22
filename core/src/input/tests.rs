@@ -1,11 +1,9 @@
 use super::*;
-use crate::{
-    coin::Coin,
-    test_support::{self, VALUE},
-};
-use bitcoin::{
-    Amount, BlockHash, Network, OutPoint, TxOut, Txid, hashes::Hash, secp256k1::SecretKey,
-};
+use crate::coin::Coin;
+use crate::test_support::{self, VALUE};
+use bitcoin::hashes::Hash;
+use bitcoin::secp256k1::SecretKey;
+use bitcoin::{Amount, BlockHash, Network, OutPoint, TxOut, Txid};
 use greenhold_signer::{Format, ScriptType};
 
 fn input(script: ScriptType, format: Format) -> Result<ClaimInput> {

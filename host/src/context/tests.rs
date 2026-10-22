@@ -1,13 +1,13 @@
 use super::*;
 use crate::test_support;
 use anyhow::anyhow;
-use bitcoin::{BlockHash, consensus, hashes::Hash, hex::DisplayHex};
+use bitcoin::hashes::Hash;
+use bitcoin::hex::DisplayHex;
+use bitcoin::{BlockHash, consensus};
 use serde_json::{Value, json};
-use std::{
-    io::{BufReader, Write},
-    net::TcpListener,
-    thread::{self, JoinHandle},
-};
+use std::io::{BufReader, Write};
+use std::net::TcpListener;
+use std::thread::{self, JoinHandle};
 use url::Url;
 
 type Step = (&'static str, Value, Value);

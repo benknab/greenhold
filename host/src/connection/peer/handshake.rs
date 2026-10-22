@@ -3,13 +3,11 @@ use super::endpoint::{Endpoint, TransportKind};
 use super::tcp::Tcp;
 use super::transport::Transport;
 use anyhow::{Context, Result, bail};
-use bitcoin::p2p::{
-    Address, ServiceFlags, message::NetworkMessage, message_network::VersionMessage,
-};
-use std::{
-    net::{Ipv4Addr, SocketAddr},
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
+use bitcoin::p2p::message::NetworkMessage;
+use bitcoin::p2p::message_network::VersionMessage;
+use bitcoin::p2p::{Address, ServiceFlags};
+use std::net::{Ipv4Addr, SocketAddr};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const MAX_HANDSHAKE_MESSAGES: usize = 100;
 // This client uses modern version messages and nonce-bearing ping/pong.

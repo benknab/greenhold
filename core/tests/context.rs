@@ -1,9 +1,8 @@
 use anyhow::Result;
-use bitcoin::{Network, blockdata::constants};
-use greenhold_core::{
-    context::{AccumulatorState, BlockEndpoint, ChainContext},
-    network::SupportedNetwork,
-};
+use bitcoin::Network;
+use bitcoin::blockdata::constants;
+use greenhold_core::context::{AccumulatorState, BlockEndpoint, ChainContext};
+use greenhold_core::network::SupportedNetwork;
 use serde_json::json;
 
 fn block(height: u32) -> Result<BlockEndpoint> {

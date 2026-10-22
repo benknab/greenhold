@@ -1,6 +1,8 @@
 use anyhow::{Context as _, Result, bail};
 use risc0_build::{DockerOptionsBuilder, GuestOptionsBuilder};
-use std::{collections::HashMap, env, path::PathBuf};
+use std::collections::HashMap;
+use std::env;
+use std::path::PathBuf;
 
 // RISC Zero's guest builder for Rust 1.97, pinned by content digest.
 const BUILDER_IMAGE: &str =

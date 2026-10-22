@@ -2,7 +2,8 @@
 
 use crate::context::ChainContext;
 use anyhow::{Result, bail};
-use bitcoin::{Amount, BlockHash, OutPoint, TxOut, consensus, hashes::Hash};
+use bitcoin::hashes::Hash;
+use bitcoin::{Amount, BlockHash, OutPoint, TxOut, consensus};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha512, Sha512_256};
 

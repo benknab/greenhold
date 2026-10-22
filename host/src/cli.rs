@@ -1,9 +1,11 @@
 use crate::connection::{electrum, utreexod_rpc};
 use anyhow::{Context, Result, bail};
-use clap::{Args, Parser, Subcommand, builder::TypedValueParser};
-use greenhold_core::{
-    claim::Nonce, eligibility::MinimumAmount, network::SupportedNetwork, verification::Signature,
-};
+use clap::builder::TypedValueParser;
+use clap::{Args, Parser, Subcommand};
+use greenhold_core::claim::Nonce;
+use greenhold_core::eligibility::MinimumAmount;
+use greenhold_core::network::SupportedNetwork;
+use greenhold_core::verification::Signature;
 use std::path::PathBuf;
 use url::Url;
 

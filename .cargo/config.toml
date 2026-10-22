@@ -2,6 +2,8 @@
 incompatible-rust-versions = "fallback"
 
 [alias]
+# Stable rustfmt accepts these CLI overrides but ignores them in its config file.
+format = "fmt --all -- --config imports_granularity=Module,hex_literal_case=Lower,format_macro_matchers=true"
 lint = "clippy --locked --workspace --all-targets -- -D warnings"
 # target/reproducible/greenhold, with the guest built in Docker.
 reproducible = "build --locked --profile reproducible -p greenhold-host --features reproducible"

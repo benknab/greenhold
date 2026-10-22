@@ -1,5 +1,6 @@
 use anyhow::Result;
-use greenhold_core::{context::ChainContext, input::ClaimInput};
+use greenhold_core::context::ChainContext;
+use greenhold_core::input::ClaimInput;
 use greenhold_guest_builder::GREENHOLD_GUEST_ELF;
 use greenhold_signer::{Format, ScriptType};
 use risc0_zkvm::{Executor, ExecutorEnv, ExitCode, LocalProver, SessionInfo};
@@ -89,11 +90,10 @@ fn guest_rejects_changed_claims_and_witnesses_without_host_checks() -> Result<()
 
 #[test]
 fn guest_rejects_rebinding_the_signature_to_a_different_valid_context() -> Result<()> {
-    use bitcoin::{Network, blockdata::constants};
-    use greenhold_core::{
-        coin::CoinWitness,
-        eligibility::{EligibleCoin, MinimumAmount},
-    };
+    use bitcoin::Network;
+    use bitcoin::blockdata::constants;
+    use greenhold_core::coin::CoinWitness;
+    use greenhold_core::eligibility::{EligibleCoin, MinimumAmount};
     let (input, _) = fixture::signed(ScriptType::P2wpkh, Format::Simple)?;
     let original = serde_json::to_value(input)?;
     for case in ["unspent_at block", "network", "accumulator"] {

@@ -1,6 +1,7 @@
 use super::*;
 use crate::context::AccumulatorState;
-use bitcoin::{Amount, block::Header};
+use bitcoin::Amount;
+use bitcoin::block::Header;
 use serde_json::json;
 
 const NETWORK: usize = TAG.len();

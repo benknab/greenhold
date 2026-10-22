@@ -1,15 +1,13 @@
 use anyhow::Result;
-use bitcoin::{
-    Amount, BlockHash, Network, OutPoint, TxOut, Txid, blockdata::constants, hashes::Hash,
-    secp256k1::SecretKey,
-};
-use greenhold_core::{
-    claim::Claim,
-    coin::{Coin, CoinWitness},
-    context::{AccumulatorState, BlockEndpoint, ChainContext},
-    eligibility::MinimumAmount,
-    input::ClaimInput,
-};
+use bitcoin::blockdata::constants;
+use bitcoin::hashes::Hash;
+use bitcoin::secp256k1::SecretKey;
+use bitcoin::{Amount, BlockHash, Network, OutPoint, TxOut, Txid};
+use greenhold_core::claim::Claim;
+use greenhold_core::coin::{Coin, CoinWitness};
+use greenhold_core::context::{AccumulatorState, BlockEndpoint, ChainContext};
+use greenhold_core::eligibility::MinimumAmount;
+use greenhold_core::input::ClaimInput;
 use greenhold_signer::{Format, ScriptType};
 
 pub const VALUE: u64 = 12_345;

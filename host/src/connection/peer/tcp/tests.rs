@@ -1,6 +1,7 @@
 use super::super::super::TIMEOUT;
 use super::*;
-use std::{io, net::TcpListener};
+use std::io;
+use std::net::TcpListener;
 
 #[test]
 fn reads_one_message_at_a_time() -> Result<()> {

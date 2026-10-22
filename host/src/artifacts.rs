@@ -2,8 +2,11 @@
 
 use anyhow::{Context as _, Result, bail};
 use bincode::Options as _;
-use greenhold_core::{claim::Claim, coin::CoinWitness};
-use std::{fs::File, io::Read as _, path::Path};
+use greenhold_core::claim::Claim;
+use greenhold_core::coin::CoinWitness;
+use std::fs::File;
+use std::io::Read as _;
+use std::path::Path;
 
 // Canonical claim bytes include the domain and version tag.
 const CLAIM_BYTES: u64 = 195;

@@ -1,11 +1,15 @@
 //! Command-line interface for the test signer.
 
 use anyhow::{Context as _, Result, ensure};
-use bitcoin::{Network, bip32::DerivationPath, hex::FromHex, secp256k1::SecretKey};
+use bitcoin::Network;
+use bitcoin::bip32::DerivationPath;
+use bitcoin::hex::FromHex;
+use bitcoin::secp256k1::SecretKey;
 use clap::{Args, Parser};
 use greenhold_signer::{Format, ScriptType};
 use serde_json::json;
-use std::{fs, path::PathBuf};
+use std::fs;
+use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
 #[command(about = "Derive test-wallet addresses and sign BIP-322 messages")]

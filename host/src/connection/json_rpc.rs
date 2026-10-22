@@ -1,7 +1,9 @@
 use anyhow::{Context, Result, anyhow, bail};
-use serde::{Deserialize, Deserializer, Serialize, de::DeserializeOwned};
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::value::RawValue;
-use std::{error::Error, fmt};
+use std::error::Error;
+use std::fmt;
 
 /// A server rejection, distinct from a malformed response. Remote details are omitted.
 #[derive(Debug, Deserialize)]

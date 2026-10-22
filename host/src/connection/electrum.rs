@@ -1,23 +1,19 @@
-use super::{
-    header::HeaderResponse,
-    json_rpc::{Request, Response, ServerError},
-    socket::{self, SocketUrl},
-};
+use super::header::HeaderResponse;
+use super::json_rpc::{Request, Response, ServerError};
+use super::socket::{self, SocketUrl};
 use anyhow::{Context, Result, bail};
-use bitcoin::{
-    BlockHash, Script, Txid,
-    block::Header,
-    hashes::{Hash, sha256},
-    hex::DisplayHex,
-};
-use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned, pki_types::ServerName};
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use std::{
-    io::{self, BufRead, BufReader, Read, Write},
-    net::TcpStream,
-    str::FromStr,
-    sync::Arc,
-};
+use bitcoin::block::Header;
+use bitcoin::hashes::{Hash, sha256};
+use bitcoin::hex::DisplayHex;
+use bitcoin::{BlockHash, Script, Txid};
+use rustls::pki_types::ServerName;
+use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned};
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
+use std::io::{self, BufRead, BufReader, Read, Write};
+use std::net::TcpStream;
+use std::str::FromStr;
+use std::sync::Arc;
 use url::{Host, Url};
 
 const PROTOCOL_VERSION: &str = "1.4";

@@ -1,5 +1,6 @@
 use anyhow::Result;
-use bitcoin::{Network, hex::FromHex};
+use bitcoin::Network;
+use bitcoin::hex::FromHex;
 use greenhold_signer::{Format, ScriptType};
 
 const MNEMONIC: &str =

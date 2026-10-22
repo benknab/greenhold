@@ -1,7 +1,9 @@
 use anyhow::{Context as _, Result, bail};
-use bitcoin::{BlockHash, Network, blockdata::constants};
+use bitcoin::blockdata::constants;
+use bitcoin::{BlockHash, Network};
 use serde::{Deserialize, Serialize};
-use std::{fmt, str::FromStr};
+use std::fmt;
+use std::str::FromStr;
 
 /// A supported network, using the Bitcoin library's names and wire representation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

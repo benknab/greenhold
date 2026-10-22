@@ -1,8 +1,6 @@
-use std::{
-    io::{self, BufReader, Read, Write},
-    net::TcpStream,
-    time::{Duration, Instant},
-};
+use std::io::{self, BufReader, Read, Write};
+use std::net::TcpStream;
+use std::time::{Duration, Instant};
 
 /// One deadline for transport negotiation, the Bitcoin handshake, and the operation.
 /// TCP connection setup and DNS resolution happen before this deadline starts.

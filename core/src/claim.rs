@@ -1,19 +1,16 @@
 //! The public statement a receipt proves. It names no coin.
 
-use crate::{
-    context::{BlockEndpoint, ChainContext},
-    eligibility::MinimumAmount,
-    network::SupportedNetwork,
-};
+use crate::context::{BlockEndpoint, ChainContext};
+use crate::eligibility::MinimumAmount;
+use crate::network::SupportedNetwork;
 use anyhow::{Context as _, Result, bail};
-use bitcoin::{
-    BlockHash, Network,
-    blockdata::constants,
-    hashes::{Hash, HashEngine as _, sha256},
-    hex::{DisplayHex as _, FromHex as _},
-};
+use bitcoin::blockdata::constants;
+use bitcoin::hashes::{Hash, HashEngine as _, sha256};
+use bitcoin::hex::{DisplayHex as _, FromHex as _};
+use bitcoin::{BlockHash, Network};
 use serde::{Deserialize, Serialize};
-use std::{fmt, str::FromStr};
+use std::fmt;
+use std::str::FromStr;
 
 /// Domain and format version of the canonical claim bytes.
 const TAG: &[u8] = b"greenhold/claim/v2\0";

@@ -1,9 +1,7 @@
 use anyhow::Result;
 use indicatif::{ProgressBar, ProgressStyle};
-use std::{
-    io::{self, IsTerminal as _},
-    time::{Duration, Instant},
-};
+use std::io::{self, IsTerminal as _};
+use std::time::{Duration, Instant};
 
 /// Show a blocking stage on stderr without changing the command's stdout report.
 pub fn run<T>(label: &'static str, work: impl FnOnce() -> Result<T>) -> Result<T> {

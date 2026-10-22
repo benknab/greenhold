@@ -1,10 +1,11 @@
 use crate::progress;
 use anyhow::{Context as _, Result, bail};
-use greenhold_core::{claim::Claim, input::ClaimInput};
+use greenhold_core::claim::Claim;
+use greenhold_core::input::ClaimInput;
 use greenhold_guest_builder::{GREENHOLD_GUEST_ELF, GREENHOLD_GUEST_ID};
+use risc0_zkvm::sha::Digest;
 use risc0_zkvm::{
     Executor, ExecutorEnv, ExitCode, InnerReceipt, LocalProver, Prover, ProverOpts, Receipt,
-    sha::Digest,
 };
 
 #[must_use]

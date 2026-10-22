@@ -1,12 +1,12 @@
-use crate::{connection::utreexod_rpc, context};
+use crate::connection::utreexod_rpc;
+use crate::context;
 use anyhow::{Context, Result, bail};
-use bitcoin::{OutPoint, TxOut, hashes::Hash};
-use greenhold_core::{
-    coin::{Coin, CoinWitness},
-    context::ChainContext,
-    eligibility::{EligibleCoin, MinimumAmount},
-    network::SupportedNetwork,
-};
+use bitcoin::hashes::Hash;
+use bitcoin::{OutPoint, TxOut};
+use greenhold_core::coin::{Coin, CoinWitness};
+use greenhold_core::context::ChainContext;
+use greenhold_core::eligibility::{EligibleCoin, MinimumAmount};
+use greenhold_core::network::SupportedNetwork;
 
 /// Fetch a tip proof before its exact public context. The proof's block hash is a
 /// lookup input; the node supplies and checks the context on this run.

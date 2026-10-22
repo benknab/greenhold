@@ -1,23 +1,16 @@
 use anyhow::{Context, Result, bail};
-use bitcoin::{
-    BlockHash,
-    hashes::{Hash, sha256},
-    hex::FromHex,
-};
+use bitcoin::BlockHash;
+use bitcoin::hashes::{Hash, sha256};
+use bitcoin::hex::FromHex;
 use serde_json::{Value, json};
-use std::{
-    fs,
-    io::{Read as _, Seek as _},
-    path::Path,
-    process::{Command, Output},
-    thread,
-    time::{Duration, Instant},
-};
-use testcontainers::{
-    Container, GenericBuildableImage, GenericImage, ImageExt,
-    core::{IntoContainerPort, WaitFor},
-    runners::{SyncBuilder, SyncRunner},
-};
+use std::io::{Read as _, Seek as _};
+use std::path::Path;
+use std::process::{Command, Output};
+use std::time::{Duration, Instant};
+use std::{fs, thread};
+use testcontainers::core::{IntoContainerPort, WaitFor};
+use testcontainers::runners::{SyncBuilder, SyncRunner};
+use testcontainers::{Container, GenericBuildableImage, GenericImage, ImageExt};
 use wait_timeout::ChildExt;
 
 pub mod transactions;

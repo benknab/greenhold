@@ -1,13 +1,10 @@
 //! Private input that the guest turns into the public claim.
 
-use crate::{
-    claim::{Claim, Nonce},
-    coin::CoinWitness,
-    context::ChainContext,
-    eligibility::EligibleCoin,
-    eligibility::MinimumAmount,
-    verification::{self, Signature},
-};
+use crate::claim::{Claim, Nonce};
+use crate::coin::CoinWitness;
+use crate::context::ChainContext;
+use crate::eligibility::{EligibleCoin, MinimumAmount};
+use crate::verification::{self, Signature};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 

@@ -1,6 +1,7 @@
 use crate::support::{self, Node, WALLET_ADDRESS, transactions};
 use anyhow::{Context, Result};
-use bitcoin::{Address, Block, BlockHash, Network, OutPoint, ScriptBuf, consensus, hex::FromHex};
+use bitcoin::hex::FromHex;
+use bitcoin::{Address, Block, BlockHash, Network, OutPoint, ScriptBuf, consensus};
 use serde_json::{Value, json};
 use std::fs;
 

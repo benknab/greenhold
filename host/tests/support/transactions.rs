@@ -1,15 +1,14 @@
 use super::{Node, WALLET_ADDRESS, WALLET_PATH, WALLET_SEED};
 use anyhow::{Context, Result, bail};
+use bitcoin::absolute::LockTime;
+use bitcoin::hashes::Hash;
+use bitcoin::hex::{DisplayHex, FromHex};
+use bitcoin::secp256k1::{Message, Secp256k1};
+use bitcoin::sighash::SighashCache;
+use bitcoin::transaction::Version;
 use bitcoin::{
     Address, Amount, CompressedPublicKey, EcdsaSighashType, Network, OutPoint, PrivateKey,
-    ScriptBuf, Transaction, TxIn, TxOut, Witness,
-    absolute::LockTime,
-    consensus, ecdsa,
-    hashes::Hash,
-    hex::{DisplayHex, FromHex},
-    secp256k1::{Message, Secp256k1},
-    sighash::SighashCache,
-    transaction::Version,
+    ScriptBuf, Transaction, TxIn, TxOut, Witness, consensus, ecdsa,
 };
 use serde_json::json;
 

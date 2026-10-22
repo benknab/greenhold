@@ -1,6 +1,8 @@
 use crate::connection::utreexod_rpc;
 use anyhow::{Context as _, Result, bail};
-use bitcoin::{BlockHash, Network, block::Header, blockdata::constants};
+use bitcoin::block::Header;
+use bitcoin::blockdata::constants;
+use bitcoin::{BlockHash, Network};
 use greenhold_core::context::{AccumulatorState, BlockEndpoint, ChainContext};
 use greenhold_core::network::SupportedNetwork;
 

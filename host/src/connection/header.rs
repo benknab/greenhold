@@ -1,5 +1,7 @@
 use anyhow::Result;
-use bitcoin::{block::Header, consensus, hex::FromHex};
+use bitcoin::block::Header;
+use bitcoin::consensus;
+use bitcoin::hex::FromHex;
 use serde::Deserialize;
 
 /// An exact consensus header encoded as RPC hex. Decode inside the RPC result

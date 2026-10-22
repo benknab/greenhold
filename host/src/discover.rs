@@ -1,10 +1,10 @@
 use crate::connection::{electrum, utreexod_rpc};
 use anyhow::{Context as _, Result, bail};
-use bitcoin::{Address, BlockHash, Network, OutPoint, blockdata::constants};
-use std::{
-    collections::{BTreeMap, BTreeSet, btree_map::Entry},
-    fmt,
-};
+use bitcoin::blockdata::constants;
+use bitcoin::{Address, BlockHash, Network, OutPoint};
+use std::collections::btree_map::Entry;
+use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
 
 const PAGE_SIZE: u32 = 1_000;
 const COIN_BATCH_SIZE: usize = 100;

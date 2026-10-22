@@ -1,21 +1,13 @@
-use super::{
-    super::socket::{self, SocketUrl},
-    deadline::DeadlineStream,
-    transport::Transport,
-};
+use super::super::socket::{self, SocketUrl};
+use super::deadline::DeadlineStream;
+use super::transport::Transport;
 use anyhow::{Context, Result, bail};
-use bitcoin::{
-    consensus,
-    p2p::{
-        Magic,
-        message::{NetworkMessage, RawNetworkMessage},
-    },
-};
-use std::{
-    io::{Read, Write},
-    net::TcpStream,
-    time::Duration,
-};
+use bitcoin::consensus;
+use bitcoin::p2p::Magic;
+use bitcoin::p2p::message::{NetworkMessage, RawNetworkMessage};
+use std::io::{Read, Write};
+use std::net::TcpStream;
+use std::time::Duration;
 
 /// Mainnet v1 framing. An I/O or framing failure discards the connection.
 #[derive(Debug)]

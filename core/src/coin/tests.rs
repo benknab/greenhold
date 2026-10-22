@@ -1,7 +1,9 @@
 use super::*;
 use crate::context::{AccumulatorState, BlockEndpoint};
 use anyhow::Context;
-use bitcoin::{Network, ScriptBuf, Txid, blockdata::constants, hex::FromHex};
+use bitcoin::blockdata::constants;
+use bitcoin::hex::FromHex;
+use bitcoin::{Network, ScriptBuf, Txid};
 use serde_json::json;
 
 fn coin() -> Result<Coin> {

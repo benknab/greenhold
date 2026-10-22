@@ -3,13 +3,11 @@
 
 use crate::network::SupportedNetwork;
 use anyhow::{Result, bail};
-use bitcoin::{
-    BlockHash, Network,
-    block::Header,
-    blockdata::constants,
-    consensus::{self, Params},
-    hashes::{Hash, HashEngine, sha256},
-};
+use bitcoin::block::Header;
+use bitcoin::blockdata::constants;
+use bitcoin::consensus::{self, Params};
+use bitcoin::hashes::{Hash, HashEngine, sha256};
+use bitcoin::{BlockHash, Network};
 use serde::{Deserialize, Serialize};
 
 /// A network, block height, and header with valid network-range proof of work.
