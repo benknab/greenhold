@@ -174,8 +174,9 @@ impl<'a> Client<'a> {
             .agent
             .post(self.config.url.as_str())
             .header("Content-Type", "application/json");
-        if let Some((user, password)) = &self.config.credentials {
-            let encoded = STANDARD.encode(format!("{user}:{password}"));
+        if let Some(credentials) = &self.config.credentials {
+            let encoded =
+                STANDARD.encode(format!("{}:{}", credentials.username, credentials.password));
             let mut authorization = HeaderValue::from_str(&format!("Basic {encoded}"))
                 .map_err(|_| anyhow!("RPC authentication header setup failed"))?;
             authorization.set_sensitive(true);

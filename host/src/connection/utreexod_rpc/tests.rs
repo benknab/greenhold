@@ -19,7 +19,10 @@ fn serve(
     let listener = TcpListener::bind("127.0.0.1:0")?;
     let config = Config::new(
         Url::parse(&format!("http://{}/", listener.local_addr()?))?,
-        auth.then(|| ("user".into(), "pass".into())),
+        auth.then(|| Credentials {
+            username: "user".into(),
+            password: "pass".into(),
+        }),
     );
     let status = status.to_owned();
     let task = thread::spawn(move || {
@@ -122,10 +125,12 @@ fn authenticated_and_anonymous_lookup_preserves_block_and_root_bytes() -> Result
         assert_eq!(roots.roots, [expected, [0; 32]]);
         task.join().map_err(|_| anyhow!("RPC mock panicked"))??;
     }
-    let config = Config::new(
-        Url::parse("http://localhost/")?,
-        Some(("secret-user".into(), "secret-password".into())),
-    );
+    let credentials = Credentials {
+        username: "secret-user".into(),
+        password: "secret-password".into(),
+    };
+    assert!(!format!("{credentials:?}").contains("secret"));
+    let config = Config::new(Url::parse("http://localhost/")?, Some(credentials));
     assert!(!format!("{config:?}").contains("secret"));
     Ok(())
 }

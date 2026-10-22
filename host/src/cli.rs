@@ -196,7 +196,10 @@ impl ConnectionConfig {
                     .context("--utreexod-rpc requires --utreexod-rpc-password")?;
                 Ok(utreexod_rpc::Config::new(
                     url.clone(),
-                    Some((user.clone(), password.value().to_owned())),
+                    Some(utreexod_rpc::Credentials {
+                        username: user.clone(),
+                        password: password.value().to_owned(),
+                    }),
                 ))
             }
         }

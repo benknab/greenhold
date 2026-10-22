@@ -2,15 +2,17 @@ use std::fmt;
 use url::Url;
 
 mod client;
+mod credentials;
 mod responses;
 mod search_options;
 pub use client::Client;
+pub use credentials::Credentials;
 pub use responses::{AddressTransaction, BlockLocation, ChainTipProof, Roots, TxOutResponse};
 pub use search_options::{HistoryOrder, InputDetails, SearchOptions};
 
 pub struct Config {
     url: Url,
-    credentials: Option<(String, String)>,
+    credentials: Option<Credentials>,
 }
 
 impl fmt::Debug for Config {
@@ -22,7 +24,7 @@ impl fmt::Debug for Config {
 }
 
 impl Config {
-    pub fn new(url: Url, credentials: Option<(String, String)>) -> Self {
+    pub fn new(url: Url, credentials: Option<Credentials>) -> Self {
         Self { url, credentials }
     }
 }
