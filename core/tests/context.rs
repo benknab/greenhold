@@ -1,5 +1,5 @@
 use anyhow::Result;
-use bitcoin::{Network, blockdata::constants::genesis_block};
+use bitcoin::{Network, blockdata::constants};
 use greenhold_core::{
     context::{AccumulatorState, BlockEndpoint, ChainContext},
     network::SupportedNetwork,
@@ -11,7 +11,7 @@ fn block(height: u32) -> Result<BlockEndpoint> {
     BlockEndpoint::new(
         Network::Bitcoin,
         height,
-        genesis_block(Network::Bitcoin).header,
+        constants::genesis_block(Network::Bitcoin).header,
     )
 }
 
@@ -58,7 +58,11 @@ fn digest_binds_endpoints_leaf_count_and_ordered_roots() -> Result<()> {
         )?,
         ChainContext::new(
             block(1)?,
-            BlockEndpoint::new(Network::Bitcoin, 2, genesis_block(Network::Testnet).header)?,
+            BlockEndpoint::new(
+                Network::Bitcoin,
+                2,
+                constants::genesis_block(Network::Testnet).header,
+            )?,
             state,
         )?,
     ] {
@@ -73,18 +77,32 @@ fn constructors_reject_invalid_structure_and_work() -> Result<()> {
     assert!(
         ChainContext::new(
             block(1)?,
-            BlockEndpoint::new(Network::Bitcoin, 1, genesis_block(Network::Testnet).header)?,
+            BlockEndpoint::new(
+                Network::Bitcoin,
+                1,
+                constants::genesis_block(Network::Testnet).header
+            )?,
             AccumulatorState::new(0, vec![])?
         )
         .is_err()
     );
     assert!(
-        BlockEndpoint::new(Network::Bitcoin, 0, genesis_block(Network::Testnet).header).is_err()
+        BlockEndpoint::new(
+            Network::Bitcoin,
+            0,
+            constants::genesis_block(Network::Testnet).header
+        )
+        .is_err()
     );
     assert!(
-        BlockEndpoint::new(Network::Bitcoin, 1, genesis_block(Network::Regtest).header).is_err()
+        BlockEndpoint::new(
+            Network::Bitcoin,
+            1,
+            constants::genesis_block(Network::Regtest).header
+        )
+        .is_err()
     );
-    let mut invalid = genesis_block(Network::Bitcoin).header;
+    let mut invalid = constants::genesis_block(Network::Bitcoin).header;
     invalid.nonce = 0;
     assert!(BlockEndpoint::new(Network::Bitcoin, 0, invalid).is_err());
     assert!(AccumulatorState::new(0, vec![]).is_ok());
@@ -125,11 +143,11 @@ fn networks_select_genesis_and_work_limits_and_bind_the_digest() -> Result<()> {
     let networks = [Network::Bitcoin, Network::Signet, Network::Regtest];
     let mut digests = Vec::new();
     for network in networks {
-        let genesis = BlockEndpoint::new(network, 0, genesis_block(network).header)?;
+        let genesis = BlockEndpoint::new(network, 0, constants::genesis_block(network).header)?;
         let context =
             ChainContext::new(genesis.clone(), genesis, AccumulatorState::new(0, vec![])?)?;
         assert_eq!(context.network(), network);
-        let found = SupportedNetwork::from_genesis(genesis_block(network).block_hash())?;
+        let found = SupportedNetwork::from_genesis(constants::genesis_block(network).block_hash())?;
         assert_eq!(Network::from(found), network);
         assert_eq!(
             serde_json::from_slice::<ChainContext>(&serde_json::to_vec(&context)?)?,
@@ -138,7 +156,11 @@ fn networks_select_genesis_and_work_limits_and_bind_the_digest() -> Result<()> {
 
         // The same non-genesis header and state must hash differently on each network.
         // A header's work alone cannot identify its chain; nodes establish that binding.
-        let endpoint = BlockEndpoint::new(network, 1, genesis_block(Network::Bitcoin).header)?;
+        let endpoint = BlockEndpoint::new(
+            network,
+            1,
+            constants::genesis_block(Network::Bitcoin).header,
+        )?;
         let digest = ChainContext::new(
             endpoint.clone(),
             endpoint,
@@ -150,18 +172,38 @@ fn networks_select_genesis_and_work_limits_and_bind_the_digest() -> Result<()> {
 
         for other in networks {
             if other != network {
-                assert!(BlockEndpoint::new(network, 0, genesis_block(other).header).is_err());
+                assert!(
+                    BlockEndpoint::new(network, 0, constants::genesis_block(other).header).is_err()
+                );
             }
         }
     }
     assert!(
-        BlockEndpoint::new(Network::Signet, 1, genesis_block(Network::Regtest).header).is_err()
+        BlockEndpoint::new(
+            Network::Signet,
+            1,
+            constants::genesis_block(Network::Regtest).header
+        )
+        .is_err()
     );
     assert!(
-        BlockEndpoint::new(Network::Regtest, 1, genesis_block(Network::Regtest).header).is_ok()
+        BlockEndpoint::new(
+            Network::Regtest,
+            1,
+            constants::genesis_block(Network::Regtest).header
+        )
+        .is_ok()
     );
-    let mainnet = BlockEndpoint::new(Network::Bitcoin, 1, genesis_block(Network::Bitcoin).header)?;
-    let signet = BlockEndpoint::new(Network::Signet, 2, genesis_block(Network::Bitcoin).header)?;
+    let mainnet = BlockEndpoint::new(
+        Network::Bitcoin,
+        1,
+        constants::genesis_block(Network::Bitcoin).header,
+    )?;
+    let signet = BlockEndpoint::new(
+        Network::Signet,
+        2,
+        constants::genesis_block(Network::Bitcoin).header,
+    )?;
     assert!(ChainContext::new(mainnet, signet, AccumulatorState::new(0, vec![])?).is_err());
     Ok(())
 }
@@ -170,8 +212,10 @@ fn networks_select_genesis_and_work_limits_and_bind_the_digest() -> Result<()> {
 fn rejects_testnets_in_constructors_and_serialized_contexts() -> Result<()> {
     let context = ChainContext::new(block(1)?, block(2)?, AccumulatorState::new(0, vec![])?)?;
     for network in [Network::Testnet, Network::Testnet4] {
-        assert!(BlockEndpoint::new(network, 0, genesis_block(network).header).is_err());
-        assert!(SupportedNetwork::from_genesis(genesis_block(network).block_hash()).is_err());
+        assert!(BlockEndpoint::new(network, 0, constants::genesis_block(network).header).is_err());
+        assert!(
+            SupportedNetwork::from_genesis(constants::genesis_block(network).block_hash()).is_err()
+        );
         let mut encoded = serde_json::to_value(&context)?;
         encoded["unspent_since"]["network"] = json!(network);
         encoded["unspent_at"]["network"] = json!(network);

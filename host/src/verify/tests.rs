@@ -1,6 +1,6 @@
 use super::*;
 use crate::cli::{Cli, Command};
-use bitcoin::{Network, blockdata::constants::genesis_block};
+use bitcoin::{Network, blockdata::constants};
 use clap::Parser as _;
 use greenhold_core::{
     context::{AccumulatorState, BlockEndpoint, ChainContext},
@@ -9,7 +9,11 @@ use greenhold_core::{
 
 #[test]
 fn expected_nonce_is_required_even_when_the_flag_is_omitted() -> Result<()> {
-    let block = BlockEndpoint::new(Network::Bitcoin, 0, genesis_block(Network::Bitcoin).header)?;
+    let block = BlockEndpoint::new(
+        Network::Bitcoin,
+        0,
+        constants::genesis_block(Network::Bitcoin).header,
+    )?;
     let context = ChainContext::new(block.clone(), block, AccumulatorState::new(0, vec![])?)?;
     let challenge = " Challenge café 🔑 ";
     for original in ["", challenge] {

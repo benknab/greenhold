@@ -1,7 +1,6 @@
 use super::super::super::TIMEOUT;
-use super::super::{handshake, probe};
 use super::*;
-use crate::{connection::peer, test_support::accept};
+use crate::{connection::peer, test_support};
 use std::{
     io::{self, Read, Write},
     net::{Shutdown, TcpListener},
@@ -16,7 +15,7 @@ fn serve(
     let listener = TcpListener::bind("127.0.0.1:0")?;
     let endpoint = format!("bip324://{}", listener.local_addr()?).parse()?;
     let task = thread::spawn(move || {
-        let (socket, _) = accept(&listener)?;
+        let (socket, _) = test_support::accept(&listener)?;
         let (reader, writer) = DeadlineStream::pair(socket, TIMEOUT)?;
         // Exercise maximum handshake garbage, authenticated as AAD on the first decoy.
         let protocol = Protocol::new(
@@ -77,7 +76,7 @@ fn reply_to_pings(mut remote: Remote) -> Result<()> {
 fn encrypted_handshake_and_reuse_cross_rekey_boundary() -> Result<()> {
     let (endpoint, task) = serve(reply_to_pings)?;
     let mut transport = Bip324::connect(endpoint.socket_url(), TIMEOUT)?;
-    assert_eq!(handshake(&mut transport)?.start_height, 123);
+    assert_eq!(peer::handshake(&mut transport)?.start_height, 123);
     for nonce in 0..230 {
         transport.send(NetworkMessage::Ping(nonce))?;
         assert_eq!(transport.receive()?, NetworkMessage::Pong(nonce));
@@ -94,7 +93,7 @@ fn probe_selects_v2_and_closes_after_handshake() -> Result<()> {
         assert!(remote.read().is_err());
         Ok(())
     })?;
-    assert_eq!(probe(&endpoint, TIMEOUT)?.start_height, 123);
+    assert_eq!(peer::probe(&endpoint, TIMEOUT)?.start_height, 123);
     task.join()
         .map_err(|_| anyhow::anyhow!("mock v2 peer panicked"))??;
     Ok(())
@@ -198,7 +197,7 @@ fn accepts_large_messages_and_more_than_one_hundred_decoys() -> Result<()> {
 fn handshake_deadline_and_v1_failure_do_not_downgrade() -> Result<()> {
     let listener = TcpListener::bind("127.0.0.1:0")?;
     let client = TcpStream::connect(listener.local_addr()?)?;
-    let (server, _) = accept(&listener)?;
+    let (server, _) = test_support::accept(&listener)?;
     let error = Bip324::new(client, Duration::ZERO)
         .err()
         .context("expected deadline error")?;
@@ -214,7 +213,7 @@ fn handshake_deadline_and_v1_failure_do_not_downgrade() -> Result<()> {
 
     let endpoint = format!("bip324://{}", listener.local_addr()?).parse()?;
     let task = thread::spawn(move || -> Result<TcpListener> {
-        let (mut server, _) = accept(&listener)?;
+        let (mut server, _) = test_support::accept(&listener)?;
         let mut key = [0; 64];
         server.read_exact(&mut key)?;
         let mut v1 = Magic::BITCOIN.to_bytes().to_vec();
@@ -225,7 +224,7 @@ fn handshake_deadline_and_v1_failure_do_not_downgrade() -> Result<()> {
         listener.set_nonblocking(true)?;
         Ok(listener)
     });
-    assert!(probe(&endpoint, TIMEOUT).is_err());
+    assert!(peer::probe(&endpoint, TIMEOUT).is_err());
     let listener = task
         .join()
         .map_err(|_| anyhow::anyhow!("mock v1 peer panicked"))??;

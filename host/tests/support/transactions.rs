@@ -4,8 +4,7 @@ use bitcoin::{
     Address, Amount, CompressedPublicKey, EcdsaSighashType, Network, OutPoint, PrivateKey,
     ScriptBuf, Transaction, TxIn, TxOut, Witness,
     absolute::LockTime,
-    consensus::{deserialize, serialize},
-    ecdsa,
+    consensus, ecdsa,
     hashes::Hash,
     hex::{DisplayHex, FromHex},
     secp256k1::{Message, Secp256k1},
@@ -68,7 +67,7 @@ pub fn mined(node: &Node, height: u32, script: &ScriptBuf) -> Result<OutPoint> {
     let hash = node.rpc("getblockhash", &json!([height]))?;
     let raw = node.rpc("getblock", &json!([hash, 0]))?;
     let block: bitcoin::Block =
-        deserialize(&Vec::<u8>::from_hex(raw.as_str().context("raw block")?)?)?;
+        consensus::deserialize(&Vec::<u8>::from_hex(raw.as_str().context("raw block")?)?)?;
     let coinbase = &block.txdata[0];
     let vout = coinbase
         .output
@@ -81,7 +80,7 @@ pub fn mined(node: &Node, height: u32, script: &ScriptBuf) -> Result<OutPoint> {
 pub fn broadcast(node: &Node, transaction: &Transaction) -> Result<()> {
     node.rpc(
         "sendrawtransaction",
-        &json!([serialize(transaction).as_hex().to_string()]),
+        &json!([consensus::serialize(transaction).as_hex().to_string()]),
     )?;
     Ok(())
 }

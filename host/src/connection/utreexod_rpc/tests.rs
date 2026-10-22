@@ -1,5 +1,5 @@
 use super::*;
-use crate::test_support::{accept, read_http};
+use crate::test_support;
 use anyhow::{Context, Result, anyhow};
 use bitcoin::OutPoint;
 use serde_json::{Value, json};
@@ -24,8 +24,8 @@ fn serve(
     let status = status.to_owned();
     let task = thread::spawn(move || {
         for (expected, body) in replies {
-            let (socket, _) = accept(&listener)?;
-            let (headers, request) = read_http(&mut BufReader::new(&socket))?;
+            let (socket, _) = test_support::accept(&listener)?;
+            let (headers, request) = test_support::read_http(&mut BufReader::new(&socket))?;
             assert!(headers.starts_with("post / http/1.1\r\n"));
             assert_eq!(headers.contains("authorization:"), auth);
             assert!(!auth || headers.contains("authorization: basic dxnlcjpwyxnz\r\n"));

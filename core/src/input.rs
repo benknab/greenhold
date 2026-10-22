@@ -6,7 +6,7 @@ use crate::{
     context::ChainContext,
     eligibility::EligibleCoin,
     eligibility::MinimumAmount,
-    verification::{Signature, verify_signature},
+    verification::{self, Signature},
 };
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -48,7 +48,7 @@ impl ClaimInput {
     pub fn check(self) -> Result<Claim> {
         let coin = EligibleCoin::new(self.witness, &self.context, self.minimum)?;
         let claim = Claim::new(&self.context, self.minimum, self.nonce);
-        verify_signature(
+        verification::verify_signature(
             &coin.witness().coin().output().script_pubkey,
             &claim.signing_message(),
             &self.signature,

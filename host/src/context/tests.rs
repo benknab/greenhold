@@ -1,7 +1,7 @@
 use super::*;
-use crate::test_support::{accept, read_http};
+use crate::test_support;
 use anyhow::anyhow;
-use bitcoin::{BlockHash, consensus::serialize, hashes::Hash, hex::DisplayHex};
+use bitcoin::{BlockHash, consensus, hashes::Hash, hex::DisplayHex};
 use serde_json::{Value, json};
 use std::{
     io::{BufReader, Write},
@@ -35,9 +35,9 @@ fn serve_rpc(steps: Vec<Step>) -> Result<(utreexod_rpc::Config, JoinHandle<Resul
     );
     let task = thread::spawn(move || {
         for (index, expected) in steps.iter().enumerate() {
-            let (socket, _) = accept(&listener)?;
+            let (socket, _) = test_support::accept(&listener)?;
             let mut stream = BufReader::new(socket);
-            let (_, request) = read_http(&mut stream)?;
+            let (_, request) = test_support::read_http(&mut stream)?;
             assert_eq!(request["jsonrpc"], "1.0");
             let reply = respond(&request, expected, u64::try_from(index)? + 1).to_string();
             write!(
@@ -66,13 +66,13 @@ fn hash(height: u32, block: BlockHash) -> Step {
 
 #[test]
 fn header_lookup_binds_the_parsed_header_to_the_requested_hash() -> Result<()> {
-    let header = genesis_block(Network::Regtest).header;
+    let header = constants::genesis_block(Network::Regtest).header;
     let hash = header.block_hash();
     for requested in [hash, BlockHash::all_zeros()] {
         let (config, task) = serve_rpc(vec![step(
             "getblockheader",
             json!([requested, false]),
-            json!(serialize(&header).as_hex().to_string()),
+            json!(consensus::serialize(&header).as_hex().to_string()),
         )])?;
         let result = block_header(&mut utreexod_rpc::Client::new(&config), &requested)
             .map_err(|error| error.to_string());
@@ -91,9 +91,9 @@ fn header_lookup_binds_the_parsed_header_to_the_requested_hash() -> Result<()> {
 fn rpc_tip_is_resolved_once_on_each_requested_network() -> Result<()> {
     for network in [Network::Bitcoin, Network::Signet, Network::Regtest] {
         // Synthetic height binding and roots, for retrieval behavior only.
-        let header = genesis_block(network).header;
+        let header = constants::genesis_block(network).header;
         let block = header.block_hash();
-        let raw = serialize(&header).as_hex().to_string();
+        let raw = consensus::serialize(&header).as_hex().to_string();
         let rpc = vec![
             hash(0, block),
             step("getbestblock", json!([]), json!({"hash":block,"height":10})),
@@ -119,9 +119,9 @@ fn rpc_tip_is_resolved_once_on_each_requested_network() -> Result<()> {
 fn rejects_wrong_networks_before_retrieving_state() -> Result<()> {
     for network in [Network::Bitcoin, Network::Signet, Network::Regtest] {
         let wrong = if network == Network::Bitcoin {
-            genesis_block(Network::Testnet).block_hash()
+            constants::genesis_block(Network::Testnet).block_hash()
         } else {
-            genesis_block(Network::Bitcoin).block_hash()
+            constants::genesis_block(Network::Bitcoin).block_hash()
         };
         let error = run(Input::new(network, Some(0), Some(0))?, vec![hash(0, wrong)])?
             .err()
@@ -136,9 +136,9 @@ fn rejects_wrong_networks_before_retrieving_state() -> Result<()> {
 
 #[test]
 fn rejects_unavailable_state_and_malformed_headers() -> Result<()> {
-    let header = genesis_block(Network::Bitcoin).header;
+    let header = constants::genesis_block(Network::Bitcoin).header;
     let genesis = header.block_hash();
-    let raw = serialize(&header).as_hex().to_string();
+    let raw = consensus::serialize(&header).as_hex().to_string();
     for case in [
         "unavailable",
         "bad-roots",
@@ -149,7 +149,7 @@ fn rejects_unavailable_state_and_malformed_headers() -> Result<()> {
         let header_reply = match case {
             "bad-header" => json!("ab".repeat(81)),
             "wrong-header" => json!(
-                serialize(&genesis_block(Network::Testnet).header)
+                consensus::serialize(&constants::genesis_block(Network::Testnet).header)
                     .as_hex()
                     .to_string()
             ),

@@ -1,5 +1,5 @@
 use anyhow::{Context as _, Result, bail};
-use bitcoin::{BlockHash, Network, blockdata::constants::genesis_block};
+use bitcoin::{BlockHash, Network, blockdata::constants};
 use serde::{Deserialize, Serialize};
 use std::{fmt, str::FromStr};
 
@@ -16,7 +16,7 @@ impl SupportedNetwork {
     pub fn from_genesis(hash: BlockHash) -> Result<Self> {
         [Network::Bitcoin, Network::Signet, Network::Regtest]
             .into_iter()
-            .find(|network| genesis_block(*network).block_hash() == hash)
+            .find(|network| constants::genesis_block(*network).block_hash() == hash)
             .map(Self)
             .context("genesis block is not a supported network")
     }

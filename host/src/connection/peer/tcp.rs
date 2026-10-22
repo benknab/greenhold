@@ -1,11 +1,11 @@
 use super::{
-    super::socket::{SocketUrl, connect_tcp},
+    super::socket::{self, SocketUrl},
     Transport,
     deadline::DeadlineStream,
 };
 use anyhow::{Context, Result, bail};
 use bitcoin::{
-    consensus::{deserialize, serialize},
+    consensus,
     p2p::{
         Magic,
         message::{NetworkMessage, RawNetworkMessage},
@@ -26,7 +26,7 @@ pub(super) struct Tcp {
 impl Tcp {
     /// The exchange budget starts after TCP connection setup.
     pub(super) fn connect(endpoint: &SocketUrl, timeout: Duration) -> Result<Self> {
-        Ok(Self::new(connect_tcp(endpoint)?, timeout))
+        Ok(Self::new(socket::connect_tcp(endpoint)?, timeout))
     }
 
     pub(super) fn new(socket: TcpStream, timeout: Duration) -> Self {
@@ -39,7 +39,7 @@ impl Tcp {
 impl Transport for Tcp {
     fn send(&mut self, message: NetworkMessage) -> Result<()> {
         let message = RawNetworkMessage::new(Magic::BITCOIN, message);
-        let bytes = serialize(&message);
+        let bytes = consensus::serialize(&message);
         let mut stream = self.stream.take().context("P2P connection is closed")?;
         stream.write_all(&bytes).context("P2P write failed")?;
         stream.flush().context("P2P flush failed")?;
@@ -74,7 +74,7 @@ fn read_message(stream: &mut impl Read) -> Result<NetworkMessage> {
         bail!("P2P body is truncated");
     }
     let message: RawNetworkMessage =
-        deserialize(&bytes).context("invalid P2P message or checksum")?;
+        consensus::deserialize(&bytes).context("invalid P2P message or checksum")?;
     Ok(message.into_payload())
 }
 

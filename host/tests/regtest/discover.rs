@@ -1,11 +1,6 @@
-use crate::support::{
-    Node, WALLET_ADDRESS, command, image, rejection, success,
-    transactions::{broadcast, mined, spend},
-};
+use crate::support::{self, Node, WALLET_ADDRESS, transactions};
 use anyhow::{Context, Result};
-use bitcoin::{
-    Address, Block, BlockHash, Network, OutPoint, ScriptBuf, consensus::deserialize, hex::FromHex,
-};
+use bitcoin::{Address, Block, BlockHash, Network, OutPoint, ScriptBuf, consensus, hex::FromHex};
 use serde_json::{Value, json};
 use std::fs;
 
@@ -18,18 +13,18 @@ struct DiscoveredCoin {
 }
 
 fn discover(node: &Node, address: &Address) -> Result<Vec<DiscoveredCoin>> {
-    let output = command(
+    let output = support::command(
         node,
         "regtest",
         "discover",
         &["--json", "--address", &address.to_string()],
     )?;
-    let report = success(&output)?;
+    let report = support::success(&output)?;
     Ok(serde_json::from_value(report)?)
 }
 
 fn discover_human(node: &Node, address: &Address) -> Result<Vec<DiscoveredCoin>> {
-    let output = command(
+    let output = support::command(
         node,
         "regtest",
         "discover",
@@ -68,7 +63,7 @@ fn discover_human(node: &Node, address: &Address) -> Result<Vec<DiscoveredCoin>>
 #[test]
 #[ignore = "requires Docker; runs Utreexod nodes"]
 fn discovery_lists_confirmed_coins_across_pages_and_prepares_a_claim() -> Result<()> {
-    let image = image()?;
+    let image = support::image()?;
     let mining = Address::p2wsh(&ScriptBuf::from_bytes(vec![0x51]), Network::Regtest);
     let destination = WALLET_ADDRESS
         .parse::<Address<_>>()?
@@ -92,8 +87,8 @@ fn discovery_lists_confirmed_coins_across_pages_and_prepares_a_claim() -> Result
     assert_eq!(coins, mined_coins(&node, &blocks, &mining.script_pubkey())?);
     // Extend history beyond one page. SegWit is active and the funding coin is mature.
     node.rpc("generate", &json!([232]))?;
-    let spent = mined(&node, 1, &mining.script_pubkey())?;
-    let mut funding = spend(
+    let spent = transactions::mined(&node, 1, &mining.script_pubkey())?;
+    let mut funding = transactions::spend(
         spent,
         &[2_000_000_000, 2_999_990_000],
         &destination.script_pubkey(),
@@ -104,7 +99,7 @@ fn discovery_lists_confirmed_coins_across_pages_and_prepares_a_claim() -> Result
         value: bitcoin::Amount::from_sat(10_000),
         script_pubkey: mining.script_pubkey(),
     });
-    broadcast(&node, &funding)?;
+    transactions::broadcast(&node, &funding)?;
     assert!(
         discover(&node, &destination)?.is_empty(),
         "mempool outputs are not confirmed coins"
@@ -145,8 +140,8 @@ fn discovery_lists_confirmed_coins_across_pages_and_prepares_a_claim() -> Result
     // An unused address is an empty result, even when other addresses have history.
     let unused = Address::p2wsh(&ScriptBuf::from_bytes(vec![0x52]), Network::Regtest);
     assert!(discover(&node, &unused)?.is_empty());
-    rejection(
-        &command(
+    support::rejection(
+        &support::command(
             &node,
             "signet",
             "discover",
@@ -158,8 +153,8 @@ fn discovery_lists_confirmed_coins_across_pages_and_prepares_a_claim() -> Result
         "not on the requested network",
     );
     let unindexed = Node::start(image, &["--noutreexo".into()], None)?;
-    rejection(
-        &command(
+    support::rejection(
+        &support::command(
             &unindexed,
             "regtest",
             "discover",
@@ -179,7 +174,7 @@ fn mined_coins(node: &Node, blocks: &Value, script: &ScriptBuf) -> Result<Vec<Di
         .map(|(index, hash)| {
             let raw = node.rpc("getblock", &json!([hash, 0]))?;
             let block: Block =
-                deserialize(&Vec::<u8>::from_hex(raw.as_str().context("raw block")?)?)?;
+                consensus::deserialize(&Vec::<u8>::from_hex(raw.as_str().context("raw block")?)?)?;
             let coinbase = &block.txdata[0];
             let (vout, output) = coinbase
                 .output
@@ -205,7 +200,7 @@ fn prepare_discovered(node: &Node, outpoint: OutPoint) -> Result<()> {
     let claim_path = directory.path().join("coin.claim");
     let witness = witness_path.to_str().context("witness path")?;
     let claim = claim_path.to_str().context("claim path")?;
-    let report = success(&command(
+    let report = support::success(&support::command(
         node,
         "regtest",
         "claim",

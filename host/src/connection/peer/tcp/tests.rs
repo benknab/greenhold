@@ -5,14 +5,14 @@ use std::{io, net::TcpListener};
 #[test]
 fn reads_one_message_at_a_time() -> Result<()> {
     let payload = vec![7; 128 * 1024];
-    let mut bytes = serialize(&RawNetworkMessage::new(
+    let mut bytes = consensus::serialize(&RawNetworkMessage::new(
         Magic::BITCOIN,
         NetworkMessage::Unknown {
             command: "uproof".try_into()?,
             payload: payload.clone(),
         },
     ));
-    bytes.extend(serialize(&RawNetworkMessage::new(
+    bytes.extend(consensus::serialize(&RawNetworkMessage::new(
         Magic::BITCOIN,
         NetworkMessage::Verack,
     )));
@@ -31,12 +31,12 @@ fn reads_one_message_at_a_time() -> Result<()> {
 
 #[test]
 fn rejects_wrong_network_checksum_and_truncated_messages() {
-    let wrong_network = serialize(&RawNetworkMessage::new(
+    let wrong_network = consensus::serialize(&RawNetworkMessage::new(
         Magic::TESTNET3,
         NetworkMessage::Verack,
     ));
     assert!(read_message(&mut wrong_network.as_slice()).is_err());
-    let valid = serialize(&RawNetworkMessage::new(
+    let valid = consensus::serialize(&RawNetworkMessage::new(
         Magic::BITCOIN,
         NetworkMessage::Ping(42),
     ));
@@ -58,7 +58,7 @@ fn pair() -> Result<(TcpStream, TcpStream)> {
 #[test]
 fn protocol_error_discards_transport() -> Result<()> {
     let (client, mut server) = pair()?;
-    server.write_all(&serialize(&RawNetworkMessage::new(
+    server.write_all(&consensus::serialize(&RawNetworkMessage::new(
         Magic::TESTNET3,
         NetworkMessage::Verack,
     )))?;
@@ -72,7 +72,7 @@ fn protocol_error_discards_transport() -> Result<()> {
 #[test]
 fn expired_deadline_discards_transport_even_with_ready_data() -> Result<()> {
     let (client, mut server) = pair()?;
-    server.write_all(&serialize(&RawNetworkMessage::new(
+    server.write_all(&consensus::serialize(&RawNetworkMessage::new(
         Magic::BITCOIN,
         NetworkMessage::Verack,
     )))?;

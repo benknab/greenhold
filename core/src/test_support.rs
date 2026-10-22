@@ -6,8 +6,8 @@ use crate::{
 };
 use anyhow::Result;
 use bitcoin::{
-    Amount, BlockHash, Network, OutPoint, ScriptBuf, TxOut, Txid,
-    blockdata::constants::genesis_block, hashes::Hash,
+    Amount, BlockHash, Network, OutPoint, ScriptBuf, TxOut, Txid, blockdata::constants,
+    hashes::Hash,
 };
 
 pub const VALUE: u64 = 12_345;
@@ -34,7 +34,7 @@ pub fn proved(
     unspent_since: u32,
     unspent_at: u32,
 ) -> Result<(CoinWitness, ChainContext)> {
-    let header = genesis_block(Network::Regtest).header;
+    let header = constants::genesis_block(Network::Regtest).header;
     let context = ChainContext::new(
         BlockEndpoint::new(Network::Regtest, unspent_since, header)?,
         BlockEndpoint::new(Network::Regtest, unspent_at, header)?,

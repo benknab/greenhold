@@ -9,7 +9,7 @@ const LAST: usize = FIRST + 36;
 const MINIMUM: usize = LAST + 36;
 
 fn header(network: Network) -> Header {
-    genesis_block(network).header
+    constants::genesis_block(network).header
 }
 
 /// Distinct X and T headers, so a swapped field changes the bytes.
@@ -41,7 +41,11 @@ fn claim_bytes_and_json_follow_the_documented_layout() -> Result<()> {
     let unspent_since = header(Network::Regtest).block_hash();
     let unspent_at = header(Network::Bitcoin).block_hash();
     let mut expected = b"greenhold/claim/v2\0".to_vec();
-    expected.extend(genesis_block(Network::Regtest).block_hash().to_byte_array());
+    expected.extend(
+        constants::genesis_block(Network::Regtest)
+            .block_hash()
+            .to_byte_array(),
+    );
     expected.extend(10u32.to_le_bytes());
     expected.extend(unspent_since.to_byte_array());
     expected.extend(20u32.to_le_bytes());
@@ -92,7 +96,9 @@ fn claim_parsing_rejects_malformed_bytes() -> Result<()> {
     };
     let mut trailing = bytes.clone();
     trailing.push(0);
-    let testnet = genesis_block(Network::Testnet).block_hash().to_byte_array();
+    let testnet = constants::genesis_block(Network::Testnet)
+        .block_hash()
+        .to_byte_array();
     let over_limit = (Amount::MAX_MONEY.to_sat() + 1).to_le_bytes();
     for (invalid, reason) in [
         (changed(NETWORK - 2, b"1"), "tag or version"),
@@ -145,8 +151,11 @@ fn signing_message_matches_independent_vector_and_binds_every_field() -> Result<
     ] {
         let mut changed = bytes.clone();
         if offset == NETWORK {
-            changed[NETWORK..FIRST]
-                .copy_from_slice(genesis_block(Network::Signet).block_hash().as_byte_array());
+            changed[NETWORK..FIRST].copy_from_slice(
+                constants::genesis_block(Network::Signet)
+                    .block_hash()
+                    .as_byte_array(),
+            );
         } else {
             changed[offset] ^= 1;
         }

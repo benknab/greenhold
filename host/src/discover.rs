@@ -1,6 +1,6 @@
 use crate::connection::{electrum, utreexod_rpc};
 use anyhow::{Context as _, Result, bail};
-use bitcoin::{Address, BlockHash, Network, OutPoint, blockdata::constants::genesis_block};
+use bitcoin::{Address, BlockHash, Network, OutPoint, blockdata::constants};
 use std::{
     collections::{BTreeMap, BTreeSet, btree_map::Entry},
     fmt,
@@ -40,7 +40,7 @@ pub fn electrum_coins(
 ) -> Result<Vec<CoinSummary>> {
     let mut client = electrum::Client::connect(endpoint)?;
     client.server_version()?;
-    if client.genesis_hash()? != genesis_block(network).block_hash() {
+    if client.genesis_hash()? != constants::genesis_block(network).block_hash() {
         bail!("Electrum server is not on the requested network ({network})");
     }
     let candidates = client.list_unspent(&address.script_pubkey())?;
@@ -75,7 +75,7 @@ pub fn coins(
     config: &utreexod_rpc::Config,
 ) -> Result<Vec<CoinSummary>> {
     let mut rpc = utreexod_rpc::Client::new(config);
-    if rpc.block_hash(0)? != genesis_block(network).block_hash() {
+    if rpc.block_hash(0)? != constants::genesis_block(network).block_hash() {
         bail!("RPC node is not on the requested network ({network})");
     }
     let tip = rpc.best_block()?;

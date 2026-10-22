@@ -1,9 +1,9 @@
 use super::*;
-use crate::test_support::{accept, read_http};
+use crate::test_support;
 use bitcoin::{
     BlockHash, Network,
-    blockdata::constants::genesis_block,
-    consensus::serialize,
+    blockdata::constants,
+    consensus,
     hashes::{Hash, sha256d},
     hex::DisplayHex,
 };
@@ -18,7 +18,7 @@ use url::Url;
 type Step = (&'static str, Value, Value);
 
 fn fixture() -> Result<(OutPoint, Vec<Step>)> {
-    let block = genesis_block(Network::Regtest);
+    let block = constants::genesis_block(Network::Regtest);
     let hash = block.block_hash();
     let transaction = &block.txdata[0];
     let outpoint = OutPoint::new(transaction.compute_txid(), 0);
@@ -63,7 +63,7 @@ fn fixture() -> Result<(OutPoint, Vec<Step>)> {
         (
             "getblockheader",
             json!([proof_hash, false]),
-            json!(serialize(&proof_header).as_hex().to_string()),
+            json!(consensus::serialize(&proof_header).as_hex().to_string()),
         ),
         (
             "getutreexoroots",
@@ -86,8 +86,8 @@ fn run(
     );
     let task = thread::spawn(move || -> Result<()> {
         for (method, params, result) in steps {
-            let (socket, _) = accept(&listener)?;
-            let (_, request) = read_http(&mut BufReader::new(&socket))?;
+            let (socket, _) = test_support::accept(&listener)?;
+            let (_, request) = test_support::read_http(&mut BufReader::new(&socket))?;
             assert_eq!(request["method"], method);
             assert_eq!(request["params"], params);
             let body = json!({"id":request["id"],"result":result}).to_string();
@@ -211,7 +211,7 @@ fn retrieval_checks_coin_and_proof_at_the_selected_block() -> Result<()> {
 
 #[test]
 fn single_coin_binding_enforces_domain_rules_on_rpc_data() -> Result<()> {
-    let block = genesis_block(Network::Regtest);
+    let block = constants::genesis_block(Network::Regtest);
     let outpoint = OutPoint::new(block.txdata[0].compute_txid(), 0);
     let coin = Coin::new(
         outpoint,

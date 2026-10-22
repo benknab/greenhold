@@ -3,7 +3,7 @@
 use anyhow::{Context as _, Result, ensure};
 use bitcoin::{Network, bip32::DerivationPath, hex::FromHex, secp256k1::SecretKey};
 use clap::{Args, Parser};
-use greenhold_signer::{Format, ScriptType, address, derive_key, seed_from_mnemonic, sign};
+use greenhold_signer::{Format, ScriptType};
 use serde_json::json;
 use std::{fs, path::PathBuf};
 
@@ -81,12 +81,12 @@ impl Wallet {
                 .strip_suffix("\r\n")
                 .or_else(|| passphrase.strip_suffix('\n'))
                 .unwrap_or(passphrase);
-            seed_from_mnemonic(&read_secret(file)?, passphrase)?.to_vec()
+            greenhold_signer::seed_from_mnemonic(&read_secret(file)?, passphrase)?.to_vec()
         } else {
             let file = self.seed_file.as_ref().context("missing seed file")?;
             Vec::<u8>::from_hex(read_secret(file)?.trim())?
         };
-        let key = derive_key(&seed, &path)?;
+        let key = greenhold_signer::derive_key(&seed, &path)?;
         Ok((path, key))
     }
 }
@@ -110,12 +110,13 @@ fn main() -> Result<()> {
     // Validate the public request before reading any secret files.
     let (path, key) = wallet.derive()?;
     let mut output = if let Some((message, format)) = signing {
-        let signed = sign(wallet.script_type, format, &key, wallet.network, &message)?;
+        let signed =
+            greenhold_signer::sign(wallet.script_type, format, &key, wallet.network, &message)?;
         let mut output = serde_json::to_value(signed)?;
         output["format"] = json!(format);
         output
     } else {
-        json!({"address": address(wallet.script_type, &key, wallet.network)})
+        json!({"address": greenhold_signer::address(wallet.script_type, &key, wallet.network)})
     };
     output["type"] = json!(wallet.script_type);
     output["network"] = json!(wallet.network);

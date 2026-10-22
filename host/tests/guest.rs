@@ -89,7 +89,7 @@ fn guest_rejects_changed_claims_and_witnesses_without_host_checks() -> Result<()
 
 #[test]
 fn guest_rejects_rebinding_the_signature_to_a_different_valid_context() -> Result<()> {
-    use bitcoin::{Network, blockdata::constants::genesis_block};
+    use bitcoin::{Network, blockdata::constants};
     use greenhold_core::{
         coin::CoinWitness,
         eligibility::{EligibleCoin, MinimumAmount},
@@ -100,7 +100,7 @@ fn guest_rejects_rebinding_the_signature_to_a_different_valid_context() -> Resul
         let mut changed = original.clone();
         match case {
             "unspent_at block" | "network" => {
-                let header = genesis_block(Network::Bitcoin).header;
+                let header = constants::genesis_block(Network::Bitcoin).header;
                 changed["context"]["unspent_at"]["header"] = serde_json::to_value(header)?;
                 changed["witness"]["proved_at"] = json!(header.block_hash());
                 if case == "network" {

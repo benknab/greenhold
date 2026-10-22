@@ -15,12 +15,7 @@ mod test_support;
 
 use anyhow::{Context as _, Result, bail};
 use clap::{CommandFactory, FromArgMatches};
-use greenhold_core::{
-    claim::Claim,
-    eligibility::EligibleCoin,
-    input::ClaimInput,
-    verification::{check_script, verify_signature},
-};
+use greenhold_core::{claim::Claim, eligibility::EligibleCoin, input::ClaimInput, verification};
 use output::{Report, Status};
 use std::{fs, process::ExitCode};
 
@@ -99,7 +94,7 @@ fn prepare(options: &cli::ClaimOptions, json: bool) -> Result<()> {
         options.minimum_sats,
         &rpc,
     )?;
-    check_script(&coin.witness().coin().output().script_pubkey)?;
+    verification::check_script(&coin.witness().coin().output().script_pubkey)?;
     let address = bitcoin::Address::from_script(
         &coin.witness().coin().output().script_pubkey,
         bitcoin::Network::from(options.context.network),
@@ -126,7 +121,7 @@ fn prove(options: cli::ProveOptions, json: bool) -> Result<()> {
     let witness = artifacts::read_witness(&options.witness)?;
     // Early rejection uses the candidate script; guest membership authenticates it.
     progress::run("Checking signature", || {
-        verify_signature(
+        verification::verify_signature(
             &witness.coin().output().script_pubkey,
             &claim.signing_message(),
             &options.signature,

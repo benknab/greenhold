@@ -1,8 +1,4 @@
-use crate::support::{
-    MINING_ADDRESS, Node, WALLET_ADDRESS, command, command_with_timeout, context_digest, image,
-    inspect, rejection, sign_claim, success,
-    transactions::{broadcast, mined, spend_signed},
-};
+use crate::support::{self, MINING_ADDRESS, Node, WALLET_ADDRESS, transactions};
 use anyhow::{Context, Result};
 use bitcoin::{Address, Amount, Network, OutPoint, Transaction};
 use greenhold_core::claim::{Claim, Nonce};
@@ -26,7 +22,7 @@ fn prepared_claim_survives_signing_delay_and_spending_but_not_a_reorg() -> Resul
     let witness = witness_path.to_str().context("witness path")?;
     let claim = claim_path.to_str().context("claim path")?;
     let receipt = receipt_path.to_str().context("receipt path")?;
-    let report = success(&command(
+    let report = support::success(&support::command(
         &node,
         "regtest",
         "claim",
@@ -56,13 +52,13 @@ fn prepared_claim_survives_signing_delay_and_spending_but_not_a_reorg() -> Resul
 
     // Sign after advancing the tip. No fresh proof for the frozen T can be fetched.
     node.rpc("generate", &json!([1]))?;
-    let signature = sign_claim(&report, &claim_path)?;
+    let signature = support::sign_claim(&report, &claim_path)?;
     assert_new_claim_uses_tip(&node, &input, directory.path())?;
 
     // Spend after T, then prove from the saved witness after the spend is confirmed.
-    broadcast(
+    transactions::broadcast(
         &node,
-        &spend_signed(
+        &transactions::spend_signed(
             OutPoint::new(funding.compute_txid(), 0),
             Amount::from_sat(2_000_000_000),
             &[1_999_990_000],
@@ -76,7 +72,7 @@ fn prepared_claim_survives_signing_delay_and_spending_but_not_a_reorg() -> Resul
     );
     let prove = || prove_prepared(&node, claim, witness, &signature, receipt);
     let proved_output = prove()?;
-    let proved = success(&proved_output)?;
+    let proved = support::success(&proved_output)?;
     assert_progress(&proved_output)?;
     assert_receipt(&proved, &fs::read(receipt)?, &fs::read(claim)?)?;
     assert!(proved.get("cycles").is_none());
@@ -92,12 +88,12 @@ fn prepared_claim_survives_signing_delay_and_spending_but_not_a_reorg() -> Resul
     )?;
     node.rpc("generate", &json!([4]))?;
     let verify_args = ["--receipt", receipt, "--nonce", NONCE];
-    rejection(
-        &command(&node, "regtest", "verify", &verify_args)?,
+    support::rejection(
+        &support::command(&node, "regtest", "verify", &verify_args)?,
         "claim does not match the node's chain state",
     );
-    rejection(&prove()?, "claim does not match the node's chain state");
-    assert_public_report(&success(&inspect(receipt)?)?, &accepted);
+    support::rejection(&prove()?, "claim does not match the node's chain state");
+    assert_public_report(&support::success(&support::inspect(receipt)?)?, &accepted);
     Ok(())
 }
 
@@ -108,7 +104,7 @@ fn prove_prepared(
     signature: &str,
     receipt: &str,
 ) -> Result<std::process::Output> {
-    command_with_timeout(
+    support::command_with_timeout(
         node,
         "regtest",
         "prove",
@@ -142,7 +138,7 @@ fn assert_new_claim_uses_tip(node: &Node, input: &str, directory: &Path) -> Resu
         (vec!["--json"], 434),
         (vec!["--json", "--unspent-since", "433"], 433),
     ] {
-        let report = success(&command(
+        let report = support::success(&support::command(
             node,
             "regtest",
             "claim",
@@ -153,7 +149,7 @@ fn assert_new_claim_uses_tip(node: &Node, input: &str, directory: &Path) -> Resu
         assert_claim_file(&claim, &report)?;
         assert!(witness.exists());
     }
-    let output = command(node, "regtest", "claim", &base)?;
+    let output = support::command(node, "regtest", "claim", &base)?;
     let bytes = fs::read(&claim)?;
     let parsed = Claim::try_from(bytes.as_slice())?;
     assert_eq!(parsed.unspent_since(), 434);
@@ -186,11 +182,11 @@ fn assert_human_report(output: &std::process::Output, report: &Value) -> Result<
 }
 
 fn assert_verified_reports(node: &Node, receipt: &str, expected: &Value) -> Result<()> {
-    rejection(
-        &command(node, "regtest", "verify", &["--json", "--receipt", receipt])?,
+    support::rejection(
+        &support::command(node, "regtest", "verify", &["--json", "--receipt", receipt])?,
         "receipt nonce does not match the expected nonce",
     );
-    let report = success(&command(
+    let report = support::success(&support::command(
         node,
         "regtest",
         "verify",
@@ -205,8 +201,8 @@ fn assert_verified_reports(node: &Node, receipt: &str, expected: &Value) -> Resu
         "another challenge",
         &Nonce::from_text(NONCE).to_string(),
     ] {
-        rejection(
-            &command(
+        support::rejection(
+            &support::command(
                 node,
                 "regtest",
                 "verify",
@@ -215,9 +211,9 @@ fn assert_verified_reports(node: &Node, receipt: &str, expected: &Value) -> Resu
             "receipt nonce does not match the expected nonce",
         );
     }
-    assert_public_report(&success(&inspect(receipt)?)?, expected);
+    assert_public_report(&support::success(&support::inspect(receipt)?)?, expected);
     assert_human_report(
-        &command(
+        &support::command(
             node,
             "regtest",
             "verify",
@@ -283,7 +279,7 @@ fn assert_preparation_rejects_ineligible(
     let witness = directory.join("rejected.witness");
     let claim = directory.join("rejected.claim");
     let outpoint = OutPoint::new(funding.compute_txid(), 0).to_string();
-    let young = mined(node, 335, &address.script_pubkey())?.to_string();
+    let young = transactions::mined(node, 335, &address.script_pubkey())?.to_string();
     let missing = OutPoint::new(funding.compute_txid(), 99).to_string();
     for (args, reason) in [
         (
@@ -312,8 +308,8 @@ fn assert_preparation_rejects_ineligible(
             "absent from the confirmed UTXO set",
         ),
     ] {
-        rejection(
-            &command(
+        support::rejection(
+            &support::command(
                 node,
                 "regtest",
                 "claim",
@@ -341,7 +337,7 @@ fn funded_node() -> Result<(Node, Address, Transaction)> {
         .parse::<Address<_>>()?
         .require_network(Network::Regtest)?;
     let node = Node::start(
-        image()?,
+        support::image()?,
         &[
             "--utreexoproofindex".into(),
             "--utreexoproofindexmaxmemory=250".into(),
@@ -350,21 +346,21 @@ fn funded_node() -> Result<(Node, Address, Transaction)> {
         None,
     )?;
     node.rpc("generate", &json!([432]))?;
-    let funding = spend_signed(
-        mined(&node, 1, &address.script_pubkey())?,
+    let funding = transactions::spend_signed(
+        transactions::mined(&node, 1, &address.script_pubkey())?,
         Amount::from_sat(5_000_000_000),
         &[2_000_000_000, 2_999_990_000],
         &address.script_pubkey(),
     )?;
-    broadcast(&node, &funding)?;
+    transactions::broadcast(&node, &funding)?;
     node.rpc("generate", &json!([1]))?;
     Ok((node, address, funding))
 }
 
 fn assert_verify_fails_closed(node: &Node, path: &Path) -> Result<()> {
     let receipt = path.to_str().context("receipt path")?;
-    rejection(
-        &command(node, "bitcoin", "verify", &["--receipt", receipt])?,
+    support::rejection(
+        &support::command(node, "bitcoin", "verify", &["--receipt", receipt])?,
         "receipt claims regtest, not bitcoin",
     );
     let mut tampered: Receipt = bincode::deserialize(&fs::read(path)?[TAG.len()..])?;
@@ -374,13 +370,13 @@ fn assert_verify_fails_closed(node: &Node, path: &Path) -> Result<()> {
     let tampered_path = path.with_file_name("tampered.receipt");
     fs::write(&tampered_path, file)?;
     let tampered = tampered_path.to_str().context("receipt path")?;
-    rejection(
-        &command(node, "regtest", "verify", &["--receipt", tampered])?,
+    support::rejection(
+        &support::command(node, "regtest", "verify", &["--receipt", tampered])?,
         "receipt verification failed",
     );
-    rejection(&inspect(tampered)?, "receipt verification failed");
+    support::rejection(&support::inspect(tampered)?, "receipt verification failed");
     let other = Node::start(
-        image()?,
+        support::image()?,
         &[
             "--utreexoproofindex".into(),
             "--utreexoproofindexmaxmemory=250".into(),
@@ -389,8 +385,8 @@ fn assert_verify_fails_closed(node: &Node, path: &Path) -> Result<()> {
         None,
     )?;
     other.rpc("generate", &json!([433]))?;
-    rejection(
-        &command(
+    support::rejection(
+        &support::command(
             &other,
             "regtest",
             "verify",
@@ -398,10 +394,10 @@ fn assert_verify_fails_closed(node: &Node, path: &Path) -> Result<()> {
         )?,
         "claim does not match the node's chain state",
     );
-    let unindexed = Node::start(image()?, &["--noutreexo".into()], Some(node))?;
+    let unindexed = Node::start(support::image()?, &["--noutreexo".into()], Some(node))?;
     unindexed.wait_for_block(node, 435)?;
-    rejection(
-        &command(
+    support::rejection(
+        &support::command(
             &unindexed,
             "regtest",
             "verify",
@@ -440,7 +436,7 @@ fn assert_claim(
     assert_eq!(claim["minimum_sats"], minimum);
     assert_eq!(
         claim["context_digest"],
-        context_digest(node, unspent_since, unspent_at)?
+        support::context_digest(node, unspent_since, unspent_at)?
     );
     assert!(claim.get("message_digest").is_none());
     assert_eq!(

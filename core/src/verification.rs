@@ -6,7 +6,7 @@ use bitcoin::{
     Address, Network, Script, Sequence, Transaction, Witness,
     absolute::LockTime,
     base64::{Engine as _, engine::general_purpose::STANDARD},
-    consensus::{deserialize, serialize},
+    consensus,
     sign_message::MessageSignature,
 };
 use serde::{Deserialize, Serialize};
@@ -36,9 +36,11 @@ impl From<Signature> for String {
     fn from(signature: Signature) -> Self {
         match signature.0 {
             Encoding::Legacy(signature) => STANDARD.encode(signature.serialize()),
-            Encoding::Simple(witness) => format!("smp{}", STANDARD.encode(serialize(&witness))),
+            Encoding::Simple(witness) => {
+                format!("smp{}", STANDARD.encode(consensus::serialize(&witness)))
+            }
             Encoding::Full(transaction) => {
-                format!("ful{}", STANDARD.encode(serialize(&transaction)))
+                format!("ful{}", STANDARD.encode(consensus::serialize(&transaction)))
             }
         }
     }
@@ -55,7 +57,8 @@ impl FromStr for Signature {
             Encoding::Simple(simple(&decode(rest)?)?)
         } else if let Some(rest) = text.strip_prefix("ful") {
             Encoding::Full(
-                deserialize(&decode(rest)?).context("full signature is not a transaction")?,
+                consensus::deserialize(&decode(rest)?)
+                    .context("full signature is not a transaction")?,
             )
         } else if text.starts_with("pof") {
             bail!("BIP-322 proof-of-funds signatures are not supported");
@@ -76,7 +79,7 @@ impl FromStr for Signature {
 }
 
 fn simple(bytes: &[u8]) -> Result<Witness> {
-    deserialize(bytes).context("simple signature is not a witness stack")
+    consensus::deserialize(bytes).context("simple signature is not a witness stack")
 }
 
 /// Verify a message signature for P2PKH, P2SH-P2WPKH, P2WPKH, or P2TR key-path scripts.

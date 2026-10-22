@@ -1,7 +1,7 @@
 use anyhow::Result;
 use bitcoin::{
-    Amount, BlockHash, Network, OutPoint, TxOut, Txid, blockdata::constants::genesis_block,
-    hashes::Hash, secp256k1::SecretKey,
+    Amount, BlockHash, Network, OutPoint, TxOut, Txid, blockdata::constants, hashes::Hash,
+    secp256k1::SecretKey,
 };
 use greenhold_core::{
     claim::Claim,
@@ -10,7 +10,7 @@ use greenhold_core::{
     eligibility::MinimumAmount,
     input::ClaimInput,
 };
-use greenhold_signer::{Format, ScriptType, address, sign};
+use greenhold_signer::{Format, ScriptType};
 
 pub const VALUE: u64 = 12_345;
 
@@ -24,10 +24,11 @@ pub fn signed(script: ScriptType, format: Format) -> Result<(ClaimInput, Claim)>
         false,
         TxOut {
             value: Amount::from_sat(VALUE),
-            script_pubkey: address(script, &key, Network::Regtest).script_pubkey(),
+            script_pubkey: greenhold_signer::address(script, &key, Network::Regtest)
+                .script_pubkey(),
         },
     )?;
-    let header = genesis_block(Network::Regtest).header;
+    let header = constants::genesis_block(Network::Regtest).header;
     let context = ChainContext::new(
         BlockEndpoint::new(Network::Regtest, 10, header)?,
         BlockEndpoint::new(Network::Regtest, 20, header)?,
@@ -37,7 +38,7 @@ pub fn signed(script: ScriptType, format: Format) -> Result<(ClaimInput, Claim)>
     let minimum = MinimumAmount::try_from(VALUE)?;
     let nonce = "ab".repeat(32).parse()?;
     let claim = Claim::new(&context, minimum, nonce);
-    let signature = sign(
+    let signature = greenhold_signer::sign(
         script,
         format,
         &key,

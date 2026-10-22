@@ -1,9 +1,9 @@
 use super::*;
 use crate::{
     context::BlockEndpoint,
-    test_support::{VALUE, coin, proved},
+    test_support::{self, VALUE},
 };
-use bitcoin::{Network, blockdata::constants::genesis_block};
+use bitcoin::{Network, blockdata::constants};
 use serde_json::json;
 
 fn minimum(sats: u64) -> Result<MinimumAmount> {
@@ -17,7 +17,11 @@ fn check(
     unspent_at: u32,
     sats: u64,
 ) -> Result<EligibleCoin> {
-    let (witness, context) = proved(coin(creation, coinbase)?, unspent_since, unspent_at)?;
+    let (witness, context) = test_support::proved(
+        test_support::coin(creation, coinbase)?,
+        unspent_since,
+        unspent_at,
+    )?;
     EligibleCoin::new(witness, &context, minimum(sats)?)
 }
 
@@ -30,7 +34,7 @@ fn reject(result: Result<EligibleCoin>, reason: &str) -> Result<()> {
 #[test]
 fn eligibility_requires_membership_creation_value_and_maturity() -> Result<()> {
     let eligible = check(10, false, 10, 10, VALUE)?;
-    assert_eq!(eligible.witness().coin(), &coin(10, false)?);
+    assert_eq!(eligible.witness().coin(), &test_support::coin(10, false)?);
     reject(check(10, false, 10, 10, VALUE + 1), "below the minimum")?;
     reject(check(11, false, 10, 20, 1), "created after unspent_since")?;
 
@@ -43,15 +47,19 @@ fn eligibility_requires_membership_creation_value_and_maturity() -> Result<()> {
     check(120, false, 120, 120, 1)?;
 
     // Every rule runs on a membership-checked witness, never on raw coin data.
-    let (witness, context) = proved(coin(10, false)?, 10, 10)?;
-    let (_, other_state) = proved(coin(9, false)?, 10, 10)?;
+    let (witness, context) = test_support::proved(test_support::coin(10, false)?, 10, 10)?;
+    let (_, other_state) = test_support::proved(test_support::coin(9, false)?, 10, 10)?;
     reject(
         EligibleCoin::new(witness.clone(), &other_state, minimum(1)?),
         "membership mismatch",
     )?;
     let later = ChainContext::new(
         context.unspent_since().clone(),
-        BlockEndpoint::new(Network::Regtest, 11, genesis_block(Network::Bitcoin).header)?,
+        BlockEndpoint::new(
+            Network::Regtest,
+            11,
+            constants::genesis_block(Network::Bitcoin).header,
+        )?,
         context.state().clone(),
     )?;
     reject(

@@ -8,7 +8,7 @@ use bitcoin::{
     Address, CompressedPublicKey, Network, PrivateKey, Transaction, Witness,
     base64::{Engine as _, engine::general_purpose::STANDARD},
     bip32::{ChildNumber, DerivationPath, Xpriv},
-    consensus::serialize,
+    consensus,
     hashes::Hash,
     key::TapTweak,
     secp256k1::{Keypair, Message, Secp256k1, SecretKey},
@@ -144,9 +144,9 @@ pub fn sign(
             bip322::sign_full(&address, message, &[private], None, LockParams::default())?
         };
         let (prefix, bytes) = if format == Format::Simple {
-            ("smp", serialize(&transaction.input[0].witness))
+            ("smp", consensus::serialize(&transaction.input[0].witness))
         } else {
-            ("ful", serialize(&transaction))
+            ("ful", consensus::serialize(&transaction))
         };
         format!("{prefix}{}", STANDARD.encode(bytes))
     };

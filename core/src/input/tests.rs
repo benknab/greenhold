@@ -1,12 +1,12 @@
 use super::*;
 use crate::{
     coin::Coin,
-    test_support::{VALUE, proved},
+    test_support::{self, VALUE},
 };
 use bitcoin::{
     Amount, BlockHash, Network, OutPoint, TxOut, Txid, hashes::Hash, secp256k1::SecretKey,
 };
-use greenhold_signer::{Format, ScriptType, address, sign};
+use greenhold_signer::{Format, ScriptType};
 
 fn input(script: ScriptType, format: Format) -> Result<ClaimInput> {
     let key = SecretKey::from_slice(&[1; 32])?;
@@ -17,14 +17,15 @@ fn input(script: ScriptType, format: Format) -> Result<ClaimInput> {
         false,
         TxOut {
             value: Amount::from_sat(VALUE),
-            script_pubkey: address(script, &key, Network::Regtest).script_pubkey(),
+            script_pubkey: greenhold_signer::address(script, &key, Network::Regtest)
+                .script_pubkey(),
         },
     )?;
-    let (witness, context) = proved(coin, 10, 20)?;
+    let (witness, context) = test_support::proved(coin, 10, 20)?;
     let minimum = MinimumAmount::try_from(VALUE)?;
     let nonce = "ab".repeat(32).parse()?;
     let message = Claim::new(&context, minimum, nonce).signing_message();
-    let signature = sign(script, format, &key, Network::Regtest, &message)?
+    let signature = greenhold_signer::sign(script, format, &key, Network::Regtest, &message)?
         .signature
         .parse()?;
     Ok(ClaimInput::new(context, witness, minimum, nonce, signature))

@@ -1,5 +1,5 @@
 use super::{
-    super::socket::{SocketUrl, connect_tcp},
+    super::socket::{self, SocketUrl},
     Transport,
     deadline::DeadlineStream,
 };
@@ -9,7 +9,7 @@ use bip324::{
     io::{Payload, Protocol},
 };
 use bitcoin::{
-    consensus::{deserialize, serialize},
+    consensus,
     hashes::{Hash, sha256d},
     p2p::{
         Magic,
@@ -78,7 +78,7 @@ type Session = Protocol<DeadlineStream, DeadlineStream>;
 impl Bip324 {
     /// The exchange budget starts after TCP connection setup and includes BIP324 negotiation.
     pub(super) fn connect(endpoint: &SocketUrl, timeout: Duration) -> Result<Self> {
-        Self::new(connect_tcp(endpoint)?, timeout)
+        Self::new(socket::connect_tcp(endpoint)?, timeout)
     }
 
     fn new(socket: TcpStream, timeout: Duration) -> Result<Self> {
@@ -124,7 +124,7 @@ impl Transport for Bip324 {
 }
 
 fn encode_message(message: &NetworkMessage) -> Result<Vec<u8>> {
-    let payload = serialize(message);
+    let payload = consensus::serialize(message);
     let command = message.command();
     let mut contents = match SHORT_COMMANDS
         .iter()
@@ -133,7 +133,7 @@ fn encode_message(message: &NetworkMessage) -> Result<Vec<u8>> {
         Some(id) if id != 0 => vec![u8::try_from(id)?],
         _ => {
             let mut prefix = vec![0];
-            prefix.extend(serialize(&command));
+            prefix.extend(consensus::serialize(&command));
             prefix
         }
     };
@@ -176,7 +176,7 @@ fn decode_message(contents: &[u8]) -> Result<NetworkMessage> {
     encoded.extend(&sha256d::Hash::hash(payload).to_byte_array()[..4]);
     encoded.extend(payload);
     let message: RawNetworkMessage =
-        deserialize(&encoded).context("invalid BIP324 message payload")?;
+        consensus::deserialize(&encoded).context("invalid BIP324 message payload")?;
     Ok(message.into_payload())
 }
 

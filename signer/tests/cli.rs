@@ -2,7 +2,7 @@ use anyhow::{Context as _, Result};
 use bitcoin::{
     Witness,
     base64::{Engine as _, engine::general_purpose::STANDARD},
-    consensus::deserialize,
+    consensus,
     hex::DisplayHex as _,
 };
 use serde_json::Value;
@@ -69,7 +69,7 @@ fn preserves_cli_addresses_defaults_and_signature_encodings() -> Result<()> {
         let signature = output["signature"].as_str().context("signature")?;
         assert!(signature.starts_with(if format == "full" { "ful" } else { "smp" }));
         if script_type == "p2tr" {
-            let witness: Witness = deserialize(&STANDARD.decode(&signature[3..])?)?;
+            let witness: Witness = consensus::deserialize(&STANDARD.decode(&signature[3..])?)?;
             assert_eq!(
                 witness.to_vec().iter().map(Vec::len).collect::<Vec<_>>(),
                 [64]

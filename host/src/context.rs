@@ -1,6 +1,6 @@
 use crate::connection::utreexod_rpc;
 use anyhow::{Context as _, Result, bail};
-use bitcoin::{BlockHash, Network, block::Header, blockdata::constants::genesis_block};
+use bitcoin::{BlockHash, Network, block::Header, blockdata::constants};
 use greenhold_core::context::{AccumulatorState, BlockEndpoint, ChainContext};
 use greenhold_core::network::SupportedNetwork;
 
@@ -61,7 +61,7 @@ fn fetch_selected(
     selected: Option<BlockHash>,
 ) -> Result<ChainContext> {
     let mut rpc = utreexod_rpc::Client::new(config);
-    let genesis = genesis_block(Network::from(input.network)).block_hash();
+    let genesis = constants::genesis_block(Network::from(input.network)).block_hash();
     if rpc.block_hash(0)? != genesis {
         bail!(
             "RPC node is not on the requested network ({})",

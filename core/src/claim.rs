@@ -8,7 +8,7 @@ use crate::{
 use anyhow::{Context as _, Result, bail};
 use bitcoin::{
     BlockHash, Network,
-    blockdata::constants::genesis_block,
+    blockdata::constants,
     hashes::{Hash, HashEngine as _, sha256},
     hex::{DisplayHex as _, FromHex as _},
 };
@@ -151,7 +151,7 @@ impl Claim {
     #[must_use]
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = TAG.to_vec();
-        let genesis = genesis_block(Network::from(self.network)).block_hash();
+        let genesis = constants::genesis_block(Network::from(self.network)).block_hash();
         bytes.extend_from_slice(genesis.as_byte_array());
         for block in [self.unspent_since, self.unspent_at] {
             bytes.extend_from_slice(&block.height.to_le_bytes());

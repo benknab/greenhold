@@ -1,7 +1,7 @@
 use super::{
     header::HeaderResponse,
     json_rpc::{Request, Response, ServerError},
-    socket::{SocketUrl, connect_tcp},
+    socket::{self, SocketUrl},
 };
 use anyhow::{Context, Result, bail};
 use bitcoin::{
@@ -161,7 +161,7 @@ pub struct Client {
 impl Client {
     pub fn connect(endpoint: &Endpoint) -> Result<Self> {
         let stream = match &endpoint.transport {
-            Transport::Tcp => Stream::Tcp(connect_tcp(endpoint.socket_url())?),
+            Transport::Tcp => Stream::Tcp(socket::connect_tcp(endpoint.socket_url())?),
             Transport::Tls(name) => {
                 let config = ClientConfig::builder_with_provider(Arc::new(
                     rustls::crypto::ring::default_provider(),
@@ -172,7 +172,7 @@ impl Client {
                 })
                 .with_no_client_auth();
                 let mut connection = ClientConnection::new(Arc::new(config), name.clone())?;
-                let mut socket = connect_tcp(endpoint.socket_url())?;
+                let mut socket = socket::connect_tcp(endpoint.socket_url())?;
                 // Finish certificate verification before returning a connected client.
                 while connection.is_handshaking() {
                     connection

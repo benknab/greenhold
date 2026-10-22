@@ -2,7 +2,7 @@
 
 use crate::context::ChainContext;
 use anyhow::{Result, bail};
-use bitcoin::{Amount, BlockHash, OutPoint, TxOut, consensus::serialize, hashes::Hash};
+use bitcoin::{Amount, BlockHash, OutPoint, TxOut, consensus, hashes::Hash};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha512, Sha512_256};
 
@@ -76,9 +76,9 @@ impl Coin {
         hash.update(tag);
         hash.update(tag);
         hash.update(self.creation_block_hash.to_byte_array());
-        hash.update(serialize(&self.outpoint));
+        hash.update(consensus::serialize(&self.outpoint));
         hash.update(((self.creation_height << 1) | u32::from(self.coinbase)).to_le_bytes());
-        hash.update(serialize(&self.output));
+        hash.update(consensus::serialize(&self.output));
         hash.finalize().into()
     }
 }

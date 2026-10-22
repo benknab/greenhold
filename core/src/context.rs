@@ -6,8 +6,8 @@ use anyhow::{Result, bail};
 use bitcoin::{
     BlockHash, Network,
     block::Header,
-    blockdata::constants::genesis_block,
-    consensus::{Params, serialize},
+    blockdata::constants,
+    consensus::{self, Params},
     hashes::{Hash, HashEngine, sha256},
 };
 use serde::{Deserialize, Serialize};
@@ -41,7 +41,7 @@ impl BlockEndpoint {
             bail!("header target exceeds {network} proof-of-work limit");
         }
         header.validate_pow(header.target())?;
-        if height == 0 && header != genesis_block(network).header {
+        if height == 0 && header != constants::genesis_block(network).header {
             bail!("height zero must be {network} genesis");
         }
         Ok(Self {
@@ -204,10 +204,12 @@ impl ChainContext {
     pub fn digest(&self) -> sha256::Hash {
         let mut engine = sha256::Hash::engine();
         engine.input(b"greenhold/chain-context/v1\0");
-        engine.input(&serialize(&genesis_block(self.network()).block_hash()));
+        engine.input(&consensus::serialize(
+            &constants::genesis_block(self.network()).block_hash(),
+        ));
         for block in [&self.unspent_since, &self.unspent_at] {
             engine.input(&block.height.to_le_bytes());
-            engine.input(&serialize(&block.header));
+            engine.input(&consensus::serialize(&block.header));
         }
         engine.input(&self.state.num_leaves.to_le_bytes());
         engine.input(&self.state.num_leaves.count_ones().to_le_bytes());

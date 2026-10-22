@@ -1,10 +1,9 @@
-use super::verify_signature;
 use crate::test_support::signatures::*;
 use anyhow::{Context as _, Result};
 use bitcoin::{
     Address, Amount, ScriptBuf, Transaction, Witness,
     base64::{Engine as _, engine::general_purpose::STANDARD},
-    consensus::{deserialize, serialize},
+    consensus,
     hashes::Hash,
     secp256k1::ecdsa,
 };
@@ -17,7 +16,7 @@ fn script(address: &str) -> Result<ScriptBuf> {
 }
 
 fn verify(address: &str, message: &str, signature: &str) -> Result<()> {
-    verify_signature(&script(address)?, message, &signature.parse()?)
+    super::verify_signature(&script(address)?, message, &signature.parse()?)
 }
 
 fn rejection(address: &str, message: &str, signature: &str, reason: &str) {
@@ -31,20 +30,20 @@ fn rejection(address: &str, message: &str, signature: &str, reason: &str) {
 
 fn full(signature: &str) -> Result<Transaction> {
     let base64 = signature.strip_prefix("ful").context("full signature")?;
-    Ok(deserialize(&STANDARD.decode(base64)?)?)
+    Ok(consensus::deserialize(&STANDARD.decode(base64)?)?)
 }
 
 fn encode_full(transaction: &Transaction) -> String {
-    format!("ful{}", STANDARD.encode(serialize(transaction)))
+    format!("ful{}", STANDARD.encode(consensus::serialize(transaction)))
 }
 
 fn encode_simple(witness: &Witness) -> String {
-    format!("smp{}", STANDARD.encode(serialize(witness)))
+    format!("smp{}", STANDARD.encode(consensus::serialize(witness)))
 }
 
 fn simple_witness(signature: &str) -> Result<Witness> {
     let base64 = signature.strip_prefix("smp").context("simple signature")?;
-    Ok(deserialize(&STANDARD.decode(base64)?)?)
+    Ok(consensus::deserialize(&STANDARD.decode(base64)?)?)
 }
 
 #[test]
@@ -403,9 +402,9 @@ fn rejects_a_lock_time_or_a_sequence_alone() -> Result<()> {
 #[test]
 fn verifies_rust_signer_across_scripts_formats_networks_and_messages() -> Result<()> {
     use bitcoin::Network;
-    use greenhold_signer::{ScriptType, address, derive_key, seed_from_mnemonic, sign};
+    use greenhold_signer::ScriptType;
 
-    let seed = seed_from_mnemonic(
+    let seed = greenhold_signer::seed_from_mnemonic(
         "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
         "",
     )?;
@@ -416,22 +415,30 @@ fn verifies_rust_signer_across_scripts_formats_networks_and_messages() -> Result
         (ScriptType::P2tr, P2TR),
     ] {
         for network in [Network::Bitcoin, Network::Signet, Network::Regtest] {
-            let key = derive_key(&seed, &script_type.default_path(network, 0, 0, 0)?)?;
-            let other_key = derive_key(&seed, &script_type.default_path(network, 0, 0, 1)?)?;
-            let other_script = address(script_type, &other_key, network).script_pubkey();
+            let key =
+                greenhold_signer::derive_key(&seed, &script_type.default_path(network, 0, 0, 0)?)?;
+            let other_key =
+                greenhold_signer::derive_key(&seed, &script_type.default_path(network, 0, 0, 1)?)?;
+            let other_script =
+                greenhold_signer::address(script_type, &other_key, network).script_pubkey();
             if network == Network::Bitcoin {
-                assert_eq!(address(script_type, &key, network).to_string(), expected);
+                assert_eq!(
+                    greenhold_signer::address(script_type, &key, network).to_string(),
+                    expected
+                );
             }
             let cases = script_type.formats().iter().flat_map(|&format| {
                 ["", MESSAGE, "é 🦀\n", "e\u{301} 🦀\n"].map(|message| (format, message))
             });
             for (format, message) in cases {
-                let signed = sign(script_type, format, &key, network, message)?;
+                let signed = greenhold_signer::sign(script_type, format, &key, network, message)?;
                 let signature = signed.signature.parse()?;
                 let script = signed.address.script_pubkey();
-                verify_signature(&script, message, &signature)?;
-                assert!(verify_signature(&other_script, message, &signature).is_err());
-                assert!(verify_signature(&script, &format!("{message} "), &signature).is_err());
+                super::verify_signature(&script, message, &signature)?;
+                assert!(super::verify_signature(&other_script, message, &signature).is_err());
+                assert!(
+                    super::verify_signature(&script, &format!("{message} "), &signature).is_err()
+                );
             }
         }
     }

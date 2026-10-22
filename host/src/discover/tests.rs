@@ -1,7 +1,7 @@
 use super::*;
-use crate::test_support::{accept, read_http};
+use crate::test_support;
 use anyhow::anyhow;
-use bitcoin::{Txid, block::Header, consensus::encode::serialize_hex, hashes::Hash};
+use bitcoin::{Txid, block::Header, consensus::encode, hashes::Hash};
 use serde_json::{Value, json};
 use std::{
     io::{BufRead as _, BufReader, Write},
@@ -36,7 +36,7 @@ fn check_discovery(large_reply: bool, confirmations: u32, changed_tip: bool) -> 
         Network::Regtest,
     );
     let script = address.script_pubkey();
-    let genesis = genesis_block(Network::Regtest).block_hash();
+    let genesis = constants::genesis_block(Network::Regtest).block_hash();
     let listener = TcpListener::bind("127.0.0.1:0")?;
     let config = utreexod_rpc::Config::new(
         Url::parse(&format!("http://{}/", listener.local_addr()?))?,
@@ -142,8 +142,8 @@ fn serve(
 ) -> Result<()> {
     let mut id = 1;
     for (index, (method, params, result)) in requests.into_iter().enumerate() {
-        let (socket, _) = accept(listener)?;
-        let (_, request) = read_http(&mut BufReader::new(&socket))?;
+        let (socket, _) = test_support::accept(listener)?;
+        let (_, request) = test_support::read_http(&mut BufReader::new(&socket))?;
         let (expected, body) = if method == "gettxout" {
             let params = params.as_array().context("batch params")?;
             let results = result.as_array().context("batch results")?;
@@ -307,7 +307,7 @@ fn electrum_response(server_network: Network, coins: Value) -> Result<Result<Vec
         (
             "server.features",
             json!([]),
-            json!({"genesis_hash":genesis_block(server_network).block_hash()}),
+            json!({"genesis_hash":constants::genesis_block(server_network).block_hash()}),
         ),
     ];
     if server_network == Network::Regtest {
@@ -326,13 +326,15 @@ fn electrum_response(server_network: Network, coins: Value) -> Result<Result<Vec
                 requests.push((
                     "blockchain.block.header",
                     json!([coin.height]),
-                    json!(serialize_hex(&electrum_header(u32::try_from(coin.height)?))),
+                    json!(encode::serialize_hex(&electrum_header(u32::try_from(
+                        coin.height
+                    )?))),
                 ));
             }
         }
     }
     let task = thread::spawn(move || -> Result<()> {
-        let (socket, _) = accept(&listener)?;
+        let (socket, _) = test_support::accept(&listener)?;
         let mut reader = BufReader::new(&socket);
         for (index, (method, params, result)) in requests.into_iter().enumerate() {
             let mut line = String::new();
@@ -351,7 +353,7 @@ fn electrum_response(server_network: Network, coins: Value) -> Result<Result<Vec
 }
 
 fn electrum_header(height: u32) -> Header {
-    let mut header = genesis_block(Network::Regtest).header;
+    let mut header = constants::genesis_block(Network::Regtest).header;
     header.nonce = height;
     header
 }

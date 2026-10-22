@@ -1,5 +1,5 @@
 use anyhow::Result;
-use bitcoin::{block::Header, consensus::deserialize, hex::FromHex};
+use bitcoin::{block::Header, consensus, hex::FromHex};
 use serde::Deserialize;
 
 /// An exact consensus header encoded as RPC hex. Decode inside the RPC result
@@ -13,6 +13,6 @@ impl TryFrom<String> for HeaderResponse {
 
     fn try_from(text: String) -> Result<Self> {
         let bytes = <[u8; 80]>::from_hex(&text)?;
-        Ok(Self(deserialize(&bytes)?))
+        Ok(Self(consensus::deserialize(&bytes)?))
     }
 }
